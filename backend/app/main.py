@@ -4,8 +4,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import health, me
+from app.api import health, me, projects
 from app.core.config import get_settings
+from app.core.errors import register_error_handlers
 from app.db import close_pool, open_pool
 
 
@@ -28,8 +29,10 @@ def create_app() -> FastAPI:
         allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE"],
         allow_headers=["Authorization", "Content-Type"],
     )
+    register_error_handlers(app)
     app.include_router(health.router)
     app.include_router(me.router)
+    app.include_router(projects.router)
     return app
 
 
