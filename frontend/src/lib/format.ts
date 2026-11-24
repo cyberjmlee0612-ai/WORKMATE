@@ -10,3 +10,12 @@ export function formatDate(value: string | null | undefined): string | null {
   if (!year || !month || !day) return null;
   return dateFormatter.format(new Date(year, month - 1, day));
 }
+
+/** 분 → "1시간 30분" */
+export function formatMinutes(minutes: number | null | undefined): string | null {
+  if (!minutes || minutes <= 0) return null;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (hours === 0) return `${rest}분`;
+  return rest === 0 ? `${hours}시간` : `${hours}시간 ${rest}분`;
+}

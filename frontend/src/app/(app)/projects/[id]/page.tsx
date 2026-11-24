@@ -3,7 +3,7 @@
 import { use, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, CalendarDays, FolderSearch, ListTodo, Pencil } from "lucide-react";
+import { ArrowLeft, CalendarDays, FolderSearch, Pencil } from "lucide-react";
 import { ApiError } from "@/lib/api/client";
 import { getProject, projectKeys } from "@/lib/api/projects";
 import { formatDate } from "@/lib/format";
@@ -11,6 +11,7 @@ import { ProgressBar } from "@/components/projects/ProgressBar";
 import { ProjectStatusBadge } from "@/components/projects/ProjectStatusBadge";
 import { ProjectFormDialog } from "@/components/projects/ProjectFormDialog";
 import { EmptyState, ErrorState } from "@/components/common/QueryStates";
+import { ProjectTasksSection } from "@/components/tasks/ProjectTasksSection";
 
 export default function ProjectDetailPage({ params }: PageProps<"/projects/[id]">) {
   const { id } = use(params);
@@ -105,13 +106,7 @@ export default function ProjectDetailPage({ params }: PageProps<"/projects/[id]"
         </div>
       </section>
 
-      <section className="surface-card mt-6 rounded-[20px] p-4 md:p-5 lg:p-6" aria-labelledby="project-tasks-heading">
-        <h2 id="project-tasks-heading" className="text-xl font-bold text-primary-dark">업무</h2>
-        <div className="mt-5">
-          {/* 4단계(업무 CRUD)에서 이 프로젝트의 업무 목록으로 교체한다 */}
-          <EmptyState icon={ListTodo} title="업무 관리 기능을 준비하고 있어요" description="다음 단계에서 이 프로젝트의 업무를 추가하고 관리할 수 있습니다." />
-        </div>
-      </section>
+      <ProjectTasksSection projectId={project.id} />
 
       {editOpen && <ProjectFormDialog project={project} onClose={() => setEditOpen(false)} />}
     </>

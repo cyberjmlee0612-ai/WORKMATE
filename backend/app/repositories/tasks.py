@@ -1,0 +1,127 @@
+"""업무 SQL. RLS가 적용된 연결에서 실행되며 user_id 조건도 함께 건다(이중 확인)."""
+
+from typing import Any
+from uuid import UUID
+
+from psycopg import Connection, sql
+from psycopg.rows import DictRow
+
+from app.core.errors import FieldError
+from app.schemas.task import TaskCreate, TaskScope, TaskUpdate
+
+LIST_LIMIT = 500  # 페이지 나누기를 도입하기 전 안전장치
+
+_SELECT = """
+select
+  t.id, t.project_id, p.name as project_name, t.title, t.description, t.status, t.priority,
+  t.due_date, t.estimated_minutes, t.completed_at, t.created_at, t.updated_at
+from public.tasks t
+left join public.projects p on p.id = t.project_id and p.user_id = t.user_id
+"""
+
+# 미완료 먼저 → 마감일 빠른 순(없으면 뒤) → 우선순위 높은 순 → 최근 생성 순
+_ORDER = """
+order by
+  (t.status = 'completed') asc,
+  t.due_date asc nulls last,
+  case t.priority when 'urgent' then 0 when 'high' then 1 when 'medium' then 2 else 3 end asc,
+  t.created_at desc
+"""
+
+PROJECT_NOT_FOUND = "프로젝트를 찾을 수 없습니다. 목록을 새로고침한 뒤 다시 선택해 주세요."
+
+
+def _ensure_own_project(db: Connection[DictRow], user_id: UUID, project_id: UUID) -> None:
+    """타인 소유이거나 없는 프로젝트면 입력칸 오류. (DB 복합 FK가 최후 방어선)"""
+    row = db.execute(
+        "select 1 from public.projects where user_id = %s and id = %s",
+        (user_id, project_id),
+    ).fetchone()
+    if row is None:
+        raise FieldError("project_id", PROJECT_NOT_FOUND)
+
+
+def list_tasks(
+    db: Connection[DictRow],
+    user_id: UUID,
+    *,
+    scope: TaskScope = "all",
+    project_id: UUID | None = None,
+    status: str | None = None,
+    priority: str | None = None,
+) -> list[DictRow]:
+    conditions = [sql.SQL("t.user_id = %(user_id)s")]
+    params: dict[str, Any] = {"user_id": user_id, "limit": LIST_LIMIT}
+
+    if project_id is not None:
+        conditions.append(sql.SQL("t.project_id = %(project_id)s"))
+        params["project_id"] = project_id
+    elif scope == "personal":
+        conditions.append(sql.SQL("t.project_id is null"))
+    elif scope == "project":
+        conditions.append(sql.SQL("t.project_id is not null"))
+
+    if status is not None:
+        conditions.append(sql.SQL("t.status = %(status)s"))
+        params["status"] = status
+    if priority is not None:
+        conditions.append(sql.SQL("t.priority = %(priority)s"))
+        params["priority"] = priority
+
+    query = sql.SQL(_SELECT + " where {} " + _ORDER + " limit %(limit)s").format(sql.SQL(" and ").join(conditions))
+    return db.execute(query, params).fetchall()
+
+
+def get_task(db: Connection[DictRow], user_id: UUID, task_id: UUID) -> DictRow | None:
+    return db.execute(_SELECT + " where t.user_id = %s and t.id = %s", (user_id, task_id)).fetchone()
+
+
+def create_task(db: Connection[DictRow], user_id: UUID, data: TaskCreate) -> DictRow:
+    if data.project_id is not None:
+        _ensure_own_project(db, user_id, data.project_id)
+
+    # completed_at은 DB 트리거가 status에 맞춰 기록한다
+    row = db.execute(
+        """
+        insert into public.tasks (user_id, project_id, title, description, status, priority, due_date, estimated_minutes)
+        values (%s, %s, %s, %s, %s, %s, %s, %s)
+        returning id
+        """,
+        (user_id, data.project_id, data.title, data.description, data.status, data.priority, data.due_date, data.estimated_minutes),
+    ).fetchone()
+    assert row is not None
+    created = get_task(db, user_id, row["id"])
+    assert created is not None
+    return created
+
+
+def update_task(db: Connection[DictRow], user_id: UUID, task_id: UUID, data: TaskUpdate) -> DictRow | None:
+    """없거나 남의 업무면 None."""
+    changes: dict[str, Any] = data.model_dump(exclude_unset=True)
+
+    exists = db.execute(
+        "select 1 from public.tasks where user_id = %s and id = %s for update",
+        (user_id, task_id),
+    ).fetchone()
+    if exists is None:
+        return None
+    if changes.get("project_id") is not None:
+        _ensure_own_project(db, user_id, changes["project_id"])
+
+    if changes:
+        assignments = sql.SQL(", ").join(
+            sql.SQL("{} = {}").format(sql.Identifier(column), sql.Placeholder(column)) for column in changes
+        )
+        db.execute(
+            sql.SQL("update public.tasks set {} where user_id = %(user_id)s and id = %(task_id)s").format(assignments),
+            {**changes, "user_id": user_id, "task_id": task_id},
+        )
+    return get_task(db, user_id, task_id)
+
+
+def delete_task(db: Connection[DictRow], user_id: UUID, task_id: UUID) -> bool:
+    row = db.execute(
+        "delete from public.tasks where user_id = %s and id = %s returning id",
+        (user_id, task_id),
+    ).fetchone()
+    return row is not None

@@ -13,6 +13,16 @@ from psycopg import errors as pg_errors
 
 GENERIC_VALIDATION_MESSAGE = "입력값을 확인해 주세요."
 
+
+class FieldError(Exception):
+    """저장소·서비스에서 특정 입력칸 오류를 알릴 때 사용. 예외로 던지므로 트랜잭션은 롤백된다."""
+
+    def __init__(self, field: str, message: str) -> None:
+        super().__init__(message)
+        self.field = field
+        self.message = message
+
+
 _TYPE_MESSAGES = {
     "missing": "필수 항목입니다.",
     "literal_error": "허용되지 않는 값입니다.",
@@ -57,6 +67,23 @@ async def _check_violation_handler(_: Request, exc: pg_errors.CheckViolation) ->
     return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, content={"detail": GENERIC_VALIDATION_MESSAGE})
 
 
+async def _field_error_handler(_: Request, exc: FieldError) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        content={"detail": GENERIC_VALIDATION_MESSAGE, "errors": {exc.field: exc.message}},
+    )
+
+
+async def _foreign_key_handler(_: Request, exc: pg_errors.ForeignKeyViolation) -> JSONResponse:
+    # 소유권 확인 직후 다른 탭에서 프로젝트가 삭제되는 등 연결 대상이 바뀐 경우
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content={"detail": "연결된 데이터가 변경되었습니다. 새로고침한 뒤 다시 시도해 주세요."},
+    )
+
+
 def register_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(RequestValidationError, _validation_handler)  # type: ignore[arg-type]
     app.add_exception_handler(pg_errors.CheckViolation, _check_violation_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(FieldError, _field_error_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(pg_errors.ForeignKeyViolation, _foreign_key_handler)  # type: ignore[arg-type]
