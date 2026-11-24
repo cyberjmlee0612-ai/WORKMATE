@@ -1,0 +1,9 @@
+// NEXT_PUBLIC_* 값은 빌드 시 인라인되므로 반드시 정적 속성 접근으로 읽는다
+export function getSupabaseEnv() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  if (!url || !key) {
+    throw new Error("NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY 환경변수를 설정하세요 (frontend/.env.local).");
+  }
+  return { url, key };
+}

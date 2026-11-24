@@ -7,6 +7,7 @@ import {
   Plus, Settings2, Sparkles, UserRound, ListTodo, ArrowUpRight,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { LogoutButton } from "@/components/auth/LogoutButton";
 
 const navigation: { label: string; icon: LucideIcon; ai?: boolean }[] = [
   { label: "대시보드", icon: Home },
@@ -75,6 +76,7 @@ export default function HomePage() {
             <div className="flex items-center gap-2">
               <span className="flex size-11 items-center justify-center rounded-xl border border-border bg-surface text-primary-dark" aria-label="알림 기능 준비 중" title="알림 기능 준비 중"><Bell size={20} strokeWidth={2} aria-hidden="true" /></span>
               <span className="flex size-11 items-center justify-center rounded-xl border border-border bg-surface text-primary-dark" aria-label="프로필 기능 준비 중" title="프로필 기능 준비 중"><UserRound size={20} strokeWidth={2} aria-hidden="true" /></span>
+              <LogoutButton />
               <button type="button" disabled title="프로젝트 생성 기능 준비 중" className="flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 font-semibold text-white opacity-75"><Plus size={20} strokeWidth={2} aria-hidden="true" /><span className="text-sm">새 프로젝트</span></button>
             </div>
           </header>

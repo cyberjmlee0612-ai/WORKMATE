@@ -23,3 +23,10 @@ npm-debug.log*
 # Operating System
 .DS_Store
 Thumbs.db
+
+# Supabase CLI local state (project ref, pooler URL)
+supabase/.temp/
+supabase/.branches/
+
+# Python test cache
+.pytest_cache/
