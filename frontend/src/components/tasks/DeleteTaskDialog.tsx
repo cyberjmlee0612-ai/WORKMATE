@@ -4,8 +4,8 @@ import { useEffect, useId, useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CircleAlert, LoaderCircle, Trash2 } from "lucide-react";
 import { ApiError } from "@/lib/api/client";
-import { projectKeys } from "@/lib/api/projects";
-import { deleteTask, taskKeys, type Task } from "@/lib/api/tasks";
+import { invalidateWorkData } from "@/lib/api/invalidate";
+import { deleteTask, type Task } from "@/lib/api/tasks";
 
 /** 열 때마다 새로 마운트해서 사용한다: `{target && <DeleteTaskDialog task={target} … />}` */
 export function DeleteTaskDialog({ task, onClose }: { task: Task; onClose: () => void }) {
@@ -24,8 +24,7 @@ export function DeleteTaskDialog({ task, onClose }: { task: Task; onClose: () =>
       }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: taskKeys.all });
-      queryClient.invalidateQueries({ queryKey: projectKeys.all });
+      invalidateWorkData(queryClient);
       onClose();
     },
   });

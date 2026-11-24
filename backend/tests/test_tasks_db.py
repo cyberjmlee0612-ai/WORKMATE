@@ -110,6 +110,46 @@ def test_default_ordering(db) -> None:
     assert order == ["이른 마감 긴급", "이른 마감 보통", "늦은 마감", "마감 없음", "완료됨"]
 
 
+def test_cancel_hides_and_excludes_from_progress(db) -> None:
+    conn, a, _, as_user = db
+    with as_user(a):
+        project = project_repo.create_project(conn, a, ProjectCreate(name="P"))
+        repo.create_task(conn, a, TaskCreate(title="완료", project_id=project["id"], status="completed"))
+        repo.create_task(conn, a, TaskCreate(title="진행", project_id=project["id"]))
+        dropped = repo.create_task(conn, a, TaskCreate(title="불필요", project_id=project["id"]))
+
+        cancelled = repo.update_task(conn, a, dropped["id"], TaskUpdate(status="cancelled", cancel_reason="  범위에서 빠짐 "))
+        assert cancelled["cancelled_at"] is not None
+        assert cancelled["cancel_reason"] == "범위에서 빠짐"
+
+        # 기본 목록에서는 숨김, 필터로만 조회
+        assert "불필요" not in [t["title"] for t in repo.list_tasks(conn, a)]
+        assert [t["title"] for t in repo.list_tasks(conn, a, status="cancelled")] == ["불필요"]
+
+        # 진행률 분자·분모에서 제외: 1/2 = 50% (제외 전이면 1/3 = 33%)
+        p = project_repo.get_project(conn, a, project["id"])
+        assert (p["total_tasks"], p["completed_tasks"], p["cancelled_tasks"], p["progress"]) == (2, 1, 1, 50)
+
+
+def test_reactivate_clears_cancel_fields(db) -> None:
+    conn, a, _, as_user = db
+    with as_user(a):
+        task = repo.create_task(conn, a, TaskCreate(title="t"))
+        repo.update_task(conn, a, task["id"], TaskUpdate(status="cancelled", cancel_reason="보류"))
+        restored = repo.update_task(conn, a, task["id"], TaskUpdate(status="todo"))
+    assert restored["status"] == "todo"
+    assert restored["cancelled_at"] is None and restored["cancel_reason"] is None
+
+
+def test_cancel_after_complete_clears_completed_at(db) -> None:
+    conn, a, _, as_user = db
+    with as_user(a):
+        task = repo.create_task(conn, a, TaskCreate(title="t", status="completed"))
+        cancelled = repo.update_task(conn, a, task["id"], TaskUpdate(status="cancelled"))
+    assert cancelled["completed_at"] is None and cancelled["cancelled_at"] is not None
+    assert cancelled["cancel_reason"] is None
+
+
 def test_delete_and_project_progress(db) -> None:
     conn, a, _, as_user = db
     with as_user(a):

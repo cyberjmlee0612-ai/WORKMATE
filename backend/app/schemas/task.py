@@ -2,15 +2,18 @@ from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, ValidationInfo, field_validator
 
-# P1에서 취소 기능을 넣을 때 "cancelled"를 추가한다 (DB CHECK 제약도 함께)
-TaskStatus = Literal["todo", "in_progress", "review", "completed"]
+# cancelled = '업무에서 제외'. 삭제와 달리 보존되며 KPI·진행률 계산에서 빠진다.
+TaskStatus = Literal["todo", "in_progress", "review", "completed", "cancelled"]
+# 새 업무는 제외 상태로 만들 수 없다
+CreatableTaskStatus = Literal["todo", "in_progress", "review", "completed"]
 TaskPriority = Literal["low", "medium", "high", "urgent"]
 TaskScope = Literal["all", "project", "personal"]
 
 TITLE_MAX_LENGTH = 300
 DESCRIPTION_MAX_LENGTH = 2000
+CANCEL_REASON_MAX_LENGTH = 500
 ESTIMATED_MINUTES_MAX = 10_000  # 약 7일. PRD에 상한이 없어 임의로 정한 안전장치
 
 
@@ -50,7 +53,7 @@ class TaskCreate(BaseModel):
     title: str
     description: str | None = None
     project_id: UUID | None = None  # None이면 개인 업무
-    status: TaskStatus = "todo"
+    status: CreatableTaskStatus = "todo"
     priority: TaskPriority = "medium"
     due_date: date | None = None
     estimated_minutes: int | None = None
@@ -68,7 +71,12 @@ class TaskCreate(BaseModel):
 
 
 class TaskUpdate(BaseModel):
-    """PATCH: 보낸 필드만 바꾼다. project_id에 null을 보내면 개인 업무로 전환된다."""
+    """PATCH: 보낸 필드만 바꾼다.
+
+    - project_id에 null을 보내면 개인 업무로 전환된다.
+    - status를 'cancelled'로 바꾸면 업무에서 제외된다(cancel_reason은 선택).
+      다른 상태로 바꾸면 제외가 풀리고 시각·사유는 DB 트리거가 비운다.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -79,6 +87,22 @@ class TaskUpdate(BaseModel):
     priority: TaskPriority | None = None
     due_date: date | None = None
     estimated_minutes: int | None = None
+    cancel_reason: str | None = None
+
+    @field_validator("cancel_reason")
+    @classmethod
+    def _cancel_reason(cls, value: str | None, info: ValidationInfo) -> str | None:
+        if value is None:
+            return None
+        # 사유는 제외할 때만 의미가 있다. 다른 상태로 바꾸면서 사유를 보내는 것은 실수로 본다.
+        # (status 필드가 먼저 선언되어 있어 info.data에서 읽을 수 있다)
+        status = info.data.get("status")
+        if status is not None and status != "cancelled":
+            raise ValueError("제외 사유는 업무를 제외할 때만 입력할 수 있습니다.")
+        value = value.strip()
+        if len(value) > CANCEL_REASON_MAX_LENGTH:
+            raise ValueError(f"제외 사유는 {CANCEL_REASON_MAX_LENGTH}자 이하로 입력해 주세요.")
+        return value or None
 
     @field_validator("title")
     @classmethod
@@ -116,5 +140,7 @@ class TaskOut(BaseModel):
     due_date: date | None
     estimated_minutes: int | None
     completed_at: datetime | None
+    cancelled_at: datetime | None
+    cancel_reason: str | None
     created_at: datetime
     updated_at: datetime

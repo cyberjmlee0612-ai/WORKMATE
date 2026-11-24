@@ -95,6 +95,7 @@ class ProjectOut(BaseModel):
     due_date: date | None
     created_at: datetime
     updated_at: datetime
-    total_tasks: int
+    total_tasks: int  # 제외(cancelled)된 업무는 빠진 수
     completed_tasks: int
+    cancelled_tasks: int
     progress: int  # 0–100, 내림 (99.6% → 99%)

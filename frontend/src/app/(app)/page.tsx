@@ -1,37 +1,60 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, type ReactNode } from "react";
+import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
 import {
   Bell, ChartNoAxesCombined, Check, FolderKanban,
-  Plus, UserRound, ListTodo, ArrowUpRight,
+  Plus, UserRound, ListTodo, ArrowRight, TriangleAlert, CalendarClock,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { LogoutButton } from "@/components/auth/LogoutButton";
 import { ProjectFormDialog } from "@/components/projects/ProjectFormDialog";
+import { ProjectCard } from "@/components/projects/ProjectCard";
+import { TaskFormDialog } from "@/components/tasks/TaskFormDialog";
+import { TaskList, TaskListSkeleton } from "@/components/tasks/TaskList";
+import { CardSkeleton, EmptyState, ErrorState } from "@/components/common/QueryStates";
+import { dashboardKeys, getDashboard } from "@/lib/api/dashboard";
+import type { Task } from "@/lib/api/tasks";
+import { useToday, userTimeZone } from "@/lib/date";
 
-// TODO(3단계): 아래 예시 데이터와 KPI를 실제 조회·집계로 교체한다
-const projects = [
-  { name: "WORKMATE 개발", progress: 65 },
-  { name: "개인 포트폴리오", progress: 40 },
-  { name: "AI 서비스 기획", progress: 80 },
-];
+const headerDateFormatter = new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric" });
 
-const tasks = [
-  { title: "WORKMATE 화면 설계하기", category: "개발" },
-  { title: "파이썬 복습하기", category: "학습" },
-  { title: "포트폴리오 자료 정리하기", category: "개인" },
-];
+function formatHeaderDate(today: string) {
+  const [y, m, d] = today.split("-").map(Number);
+  return headerDateFormatter.format(new Date(y, m - 1, d));
+}
+
+/** 지표 숫자는 기존 디자인처럼 두 자리로 표시 (04, 28) */
+const pad = (n: number) => String(n).padStart(2, "0");
 
 export default function HomePage() {
-  const router = useRouter();
+  const today = useToday();
   const [projectFormOpen, setProjectFormOpen] = useState(false);
+  const [taskFormOpen, setTaskFormOpen] = useState(false);
+
+  const tz = today ? userTimeZone() : "UTC";
+  const { data, isPending, isError, error, refetch, isRefetching } = useQuery({
+    queryKey: dashboardKeys.detail(today ?? "", tz),
+    queryFn: () => getDashboard(today!, tz),
+    enabled: today !== null, // '오늘'은 브라우저에서만 알 수 있다
+  });
+  const loading = isPending;
+  const kpi = data?.kpi;
+
+  const addTaskButton = (
+    <button type="button" onClick={() => setTaskFormOpen(true)} className="flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-white hover:bg-primary-dark">
+      <Plus size={18} strokeWidth={2} aria-hidden="true" />
+      업무 추가
+    </button>
+  );
 
   return (
     <>
       <header className="flex flex-wrap items-start justify-between gap-5">
         <div className="min-w-0">
-          <p className="font-geist text-xs font-semibold uppercase tracking-[0.22em] text-primary">Monday, work smarter</p>
+          {/* 실제 오늘 날짜. 확인 전(서버 렌더링 중)에는 같은 높이의 빈 줄을 둔다 */}
+          <p className="font-geist min-h-4 text-xs font-semibold uppercase tracking-[0.22em] text-primary">{today ? formatHeaderDate(today) : " "}</p>
           <h1 className="mt-3 text-[28px] font-bold leading-tight text-primary-dark md:text-[32px]">안녕하세요! <span aria-hidden="true">👋</span></h1>
           <p className="mt-2 text-sm text-muted md:text-base">오늘도 WORKMATE와 함께 차근차근 시작해 봐요.</p>
         </div>
@@ -43,45 +66,141 @@ export default function HomePage() {
         </div>
       </header>
 
-      <section className="mt-9 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4 lg:gap-5" aria-label="요약 지표">
-        <SummaryCard title="전체 프로젝트" value="04" description="진행 중인 프로젝트" icon={FolderKanban} />
-        <SummaryCard title="전체 업무" value="28" description="등록된 업무" icon={ListTodo} />
-        <SummaryCard title="완료한 업무" value="18" description="이번 주 완료" icon={Check} />
-        <SummaryCard title="진행률" value="68%" description="전체 업무 기준" icon={ChartNoAxesCombined} />
-      </section>
-
-      <section className="surface-card mt-8 rounded-[20px] p-4 md:p-5 lg:p-6" aria-labelledby="projects-heading">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div><p className="font-geist text-xs font-semibold uppercase tracking-[0.18em] text-primary">Projects</p><h2 id="projects-heading" className="mt-1 text-xl font-bold text-primary-dark">내 프로젝트</h2><p className="mt-1 text-sm text-muted">진행 중인 프로젝트를 확인하세요.</p></div>
-          <span className="rounded-full bg-pale-green px-3 py-1.5 text-xs font-semibold text-primary-dark">3개의 프로젝트</span>
+      {isError ? (
+        <div className="mt-9">
+          <ErrorState message={error.message} onRetry={() => refetch()} retrying={isRefetching} />
         </div>
-        <div className="mt-6 grid gap-4 lg:grid-cols-3">
-          {projects.map((project) => <ProjectItem key={project.name} {...project} />)}
-        </div>
-      </section>
+      ) : (
+        <>
+          <section className="mt-9 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4 lg:gap-5" aria-label="요약 지표" aria-busy={loading}>
+            <SummaryCard title="전체 프로젝트" value={kpi ? pad(kpi.total_projects) : null} description="보관한 프로젝트 제외" icon={FolderKanban} />
+            <SummaryCard title="전체 업무" value={kpi ? pad(kpi.total_tasks) : null} description="프로젝트 업무 + 개인 업무" icon={ListTodo} />
+            <SummaryCard title="완료한 업무" value={kpi ? pad(kpi.completed_tasks) : null} description="완료 상태인 업무" icon={Check} />
+            <SummaryCard title="진행률" value={kpi ? `${kpi.progress}%` : null} description="전체 업무 중 완료 비율" icon={ChartNoAxesCombined} />
+          </section>
 
-      <section className="surface-card mt-6 rounded-[20px] p-4 md:p-5 lg:p-6" aria-labelledby="tasks-heading">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div><p className="font-geist text-xs font-semibold uppercase tracking-[0.18em] text-primary">Today&apos;s focus</p><h2 id="tasks-heading" className="mt-1 text-xl font-bold text-primary-dark">오늘의 업무</h2><p className="mt-1 text-sm text-muted">오늘 처리해야 할 업무 목록이에요.</p></div>
-          <span className="text-sm font-medium text-muted">3개의 업무</span>
-        </div>
-        <div className="mt-5 divide-y divide-border">{tasks.map((task) => <TaskItem key={task.title} {...task} />)}</div>
-      </section>
+          <section className="surface-card mt-8 rounded-[20px] p-4 md:p-5 lg:p-6" aria-labelledby="projects-heading">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div><p className="font-geist text-xs font-semibold uppercase tracking-[0.18em] text-primary">Projects</p><h2 id="projects-heading" className="mt-1 text-xl font-bold text-primary-dark">내 프로젝트</h2><p className="mt-1 text-sm text-muted">진행 중인 프로젝트를 확인하세요.</p></div>
+              {kpi && (
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full bg-pale-green px-3 py-1.5 text-xs font-semibold text-primary-dark">{kpi.active_projects}개의 프로젝트</span>
+                  {kpi.active_projects > 0 && <ViewAllLink href="/projects" />}
+                </div>
+              )}
+            </div>
+            <div className="mt-6">
+              {loading ? (
+                <CardSkeleton />
+              ) : data.projects.length === 0 ? (
+                <EmptyState
+                  icon={FolderKanban}
+                  title="진행 중인 프로젝트가 없어요"
+                  description="프로젝트를 만들고 업무를 정리해 보세요."
+                  action={
+                    <button type="button" onClick={() => setProjectFormOpen(true)} className="flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-white hover:bg-primary-dark">
+                      <Plus size={18} strokeWidth={2} aria-hidden="true" />
+                      프로젝트 추가
+                    </button>
+                  }
+                />
+              ) : (
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {data.projects.map((project) => <ProjectCard key={project.id} project={project} />)}
+                </div>
+              )}
+            </div>
+          </section>
 
-      {/* 대시보드 프로젝트 목록은 아직 예시 데이터이므로, 생성 후 새 프로젝트 상세로 이동한다 */}
-      {projectFormOpen && <ProjectFormDialog onClose={() => setProjectFormOpen(false)} onSaved={(project) => router.push(`/projects/${project.id}`)} />}
+          <section className="surface-card mt-6 rounded-[20px] p-4 md:p-5 lg:p-6" aria-labelledby="tasks-heading">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div><p className="font-geist text-xs font-semibold uppercase tracking-[0.18em] text-primary">Today&apos;s focus</p><h2 id="tasks-heading" className="mt-1 text-xl font-bold text-primary-dark">오늘의 업무</h2><p className="mt-1 text-sm text-muted">마감일이 오늘이거나 지난 업무예요.</p></div>
+              {data && (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-muted">
+                    {data.today_tasks.filter((t) => t.status !== "completed").length}개 남음
+                  </span>
+                  <ViewAllLink href="/tasks" />
+                </div>
+              )}
+            </div>
+            <div className="mt-3">
+              {loading ? (
+                <TaskListSkeleton rows={3} />
+              ) : (
+                <>
+                  {data.today_tasks.length === 0 ? (
+                    <EmptyState icon={ListTodo} title="오늘 마감인 업무가 없어요" description="오늘 할 업무를 추가해 보세요." action={addTaskButton} />
+                  ) : (
+                    <TodayTaskGroups tasks={data.today_tasks} today={data.today} />
+                  )}
+                  {data.today_has_more && (
+                    <p className="mt-3 text-sm text-muted">
+                      더 많은 업무가 있어요. <Link href="/tasks" className="font-semibold text-primary hover:underline">업무 관리에서 전체 보기</Link>
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+          </section>
+        </>
+      )}
+
+      {projectFormOpen && <ProjectFormDialog onClose={() => setProjectFormOpen(false)} />}
+      {/* 오늘의 업무에서 추가하면 마감일을 오늘로 미리 채운다 */}
+      {taskFormOpen && <TaskFormDialog defaultDueDate={today} onClose={() => setTaskFormOpen(false)} />}
     </>
   );
 }
 
-function SummaryCard({ title, value, description, icon: Icon }: { title: string; value: string; description: string; icon: LucideIcon }) {
-  return <div className="glass-panel rounded-[20px] p-4 md:p-5 lg:p-6"><div className="flex items-start justify-between gap-3"><p className="text-sm font-medium text-muted">{title}</p><span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-pale-green text-primary-dark"><Icon size={20} strokeWidth={2} aria-hidden="true" /></span></div><p className="font-geist mt-4 text-[30px] font-bold leading-none text-primary-dark">{value}</p><p className="mt-3 text-xs text-muted">{description}</p></div>;
+function SummaryCard({ title, value, description, icon: Icon }: { title: string; value: string | null; description: string; icon: LucideIcon }) {
+  return <div className="glass-panel rounded-[20px] p-4 md:p-5 lg:p-6"><div className="flex items-start justify-between gap-3"><p className="text-sm font-medium text-muted">{title}</p><span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-pale-green text-primary-dark"><Icon size={20} strokeWidth={2} aria-hidden="true" /></span></div>{value === null ? <div className="mt-4 h-[30px] w-16 animate-pulse rounded-lg bg-pale-green" /> : <p className="font-geist mt-4 text-[30px] font-bold leading-none text-primary-dark">{value}</p>}<p className="mt-3 text-xs text-muted">{description}</p></div>;
 }
 
-function ProjectItem({ name, progress }: { name: string; progress: number }) {
-  return <article className="rounded-2xl border border-border bg-background/80 p-4 md:p-5"><div className="flex items-start justify-between gap-2"><span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-pale-green text-primary-dark"><FolderKanban size={20} strokeWidth={2} aria-hidden="true" /></span><ArrowUpRight size={16} strokeWidth={2} className="text-sage" aria-hidden="true" /></div><h3 className="mt-5 break-words text-base font-semibold text-primary-dark">{name}</h3><div className="mt-5 flex justify-between text-sm"><span className="text-muted">진행률</span><span className="font-geist font-semibold text-primary-dark">{progress}%</span></div><div className="mt-3 h-2 overflow-hidden rounded-full bg-pale-green" role="meter" aria-label={`${name} 진행률`} aria-valuenow={progress} aria-valuemin={0} aria-valuemax={100}><div className="h-full rounded-full bg-primary" style={{ width: `${progress}%` }} /></div></article>;
+/**
+ * 오늘의 업무를 '지연된 업무'와 '오늘 마감' 두 묶음으로 나눈다.
+ * - 지연: 마감일이 오늘 이전이고 아직 완료하지 않은 업무
+ * - 오늘 마감: 마감일이 오늘인 업무 + 오늘 완료한 업무(지난 업무를 오늘 끝냈다면 더 이상 지연이 아니다)
+ * 서버가 마감일 순으로 정렬해 주므로 순서는 그대로 유지된다.
+ */
+function TodayTaskGroups({ tasks, today }: { tasks: Task[]; today: string }) {
+  const overdue = tasks.filter((t) => t.status !== "completed" && t.due_date !== null && t.due_date < today);
+  const dueToday = tasks.filter((t) => !overdue.includes(t));
+
+  return (
+    <div className="space-y-5">
+      {overdue.length > 0 && (
+        <TaskGroup id="overdue-heading" title="지연된 업무" count={overdue.length} icon={TriangleAlert} tone="text-red-800">
+          <TaskList tasks={overdue} />
+        </TaskGroup>
+      )}
+      {dueToday.length > 0 && (
+        <TaskGroup id="due-today-heading" title="오늘 마감" count={dueToday.length} icon={CalendarClock} tone="text-primary-dark">
+          <TaskList tasks={dueToday} />
+        </TaskGroup>
+      )}
+    </div>
+  );
 }
 
-function TaskItem({ title, category }: { title: string; category: string }) {
-  return <div className="flex min-w-0 flex-wrap items-center gap-3 py-4 md:flex-nowrap"><span className="flex size-11 shrink-0 items-center justify-center rounded-full border border-border bg-white text-soft-sage" aria-label="완료 기능 준비 중" title="완료 기능 준비 중"><Check size={16} strokeWidth={2} aria-hidden="true" /></span><span className="min-w-0 flex-1 break-words text-sm font-medium text-foreground">{title}</span><span className="rounded-lg bg-pale-green px-3 py-1.5 text-xs font-semibold text-primary-dark">{category}</span></div>;
+function TaskGroup({ id, title, count, icon: Icon, tone, children }: { id: string; title: string; count: number; icon: LucideIcon; tone: string; children: ReactNode }) {
+  return (
+    <div role="group" aria-labelledby={id}>
+      <h3 id={id} className={`flex items-center gap-1.5 border-b border-border pb-2 text-sm font-semibold ${tone}`}>
+        <Icon size={16} strokeWidth={2} aria-hidden="true" />
+        {title}
+        <span className="font-geist font-medium text-muted">({count})</span>
+      </h3>
+      {children}
+    </div>
+  );
+}
+
+function ViewAllLink({ href }: { href: string }) {
+  return (
+    <Link href={href} className="inline-flex min-h-11 items-center gap-1 rounded-lg px-2 text-sm font-semibold text-primary hover:underline">
+      전체 보기
+      <ArrowRight size={16} strokeWidth={2} aria-hidden="true" />
+    </Link>
+  );
 }

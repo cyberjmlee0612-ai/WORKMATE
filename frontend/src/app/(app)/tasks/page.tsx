@@ -6,7 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ListTodo, Plus } from "lucide-react";
 import { listProjects, projectKeys } from "@/lib/api/projects";
 import {
-  TASK_PRIORITIES, TASK_PRIORITY_LABEL, TASK_STATUSES, TASK_STATUS_LABEL, listTasks, taskKeys,
+  TASK_FILTER_STATUSES, TASK_PRIORITIES, TASK_PRIORITY_LABEL, TASK_STATUS_LABEL, listTasks, taskKeys,
   type TaskFilters, type TaskScope,
 } from "@/lib/api/tasks";
 import { TaskList, TaskListSkeleton } from "@/components/tasks/TaskList";
@@ -41,7 +41,8 @@ function TasksContent() {
   // 필터는 URL에 저장해 새로고침·공유 시에도 유지한다. 잘못된 값은 무시한다.
   const scope = pick(searchParams.get("scope"), ["all", "project", "personal"] as const) ?? "all";
   const projectId = scope === "project" ? searchParams.get("project_id") ?? undefined : undefined;
-  const status = pick(searchParams.get("status"), TASK_STATUSES);
+  // 상태 필터가 없으면 서버가 제외(cancelled)한 업무를 숨긴다. '제외됨'을 고르면 제외한 업무만 본다.
+  const status = pick(searchParams.get("status"), TASK_FILTER_STATUSES);
   const priority = pick(searchParams.get("priority"), TASK_PRIORITIES);
   const filters: TaskFilters = { scope, project_id: projectId, status, priority };
 
@@ -100,8 +101,8 @@ function TasksContent() {
               </select>
             )}
             <select aria-label="상태 필터" value={status ?? ""} onChange={(e) => setParams({ status: e.target.value || undefined })} className={selectClass}>
-              <option value="">모든 상태</option>
-              {TASK_STATUSES.map((s) => <option key={s} value={s}>{TASK_STATUS_LABEL[s]}</option>)}
+              <option value="">모든 상태 (제외됨 빼고)</option>
+              {TASK_FILTER_STATUSES.map((s) => <option key={s} value={s}>{TASK_STATUS_LABEL[s]}</option>)}
             </select>
             <select aria-label="우선순위 필터" value={priority ?? ""} onChange={(e) => setParams({ priority: e.target.value || undefined })} className={selectClass}>
               <option value="">모든 우선순위</option>
@@ -130,8 +131,22 @@ function TasksContent() {
               empty={
                 <EmptyState
                   icon={ListTodo}
-                  title={hasFilter ? "조건에 맞는 업무가 없어요" : scope === "personal" ? "개인 업무가 없어요" : "아직 업무가 없어요"}
-                  description={hasFilter ? "필터를 바꾸거나 초기화해 보세요." : "새 업무를 추가해 할 일을 정리해 보세요."}
+                  title={
+                    status === "cancelled"
+                      ? "제외한 업무가 없어요"
+                      : hasFilter
+                        ? "조건에 맞는 업무가 없어요"
+                        : scope === "personal"
+                          ? "개인 업무가 없어요"
+                          : "아직 업무가 없어요"
+                  }
+                  description={
+                    status === "cancelled"
+                      ? "업무 상태 배지를 눌러 ‘업무에서 제외’를 고르면 여기에 보관돼요."
+                      : hasFilter
+                        ? "필터를 바꾸거나 초기화해 보세요."
+                        : "새 업무를 추가해 할 일을 정리해 보세요."
+                  }
                   action={
                     !hasFilter && (
                       <button type="button" onClick={() => setFormOpen(true)} className="flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-white hover:bg-primary-dark">

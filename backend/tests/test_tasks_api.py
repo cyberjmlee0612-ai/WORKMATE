@@ -29,6 +29,7 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
             raise FieldError("project_id", "프로젝트를 찾을 수 없습니다.")
         return {
             "id": uuid4(), **data.model_dump(), "project_name": None, "completed_at": None,
+            "cancelled_at": None, "cancel_reason": None,
             "created_at": "2026-11-24T00:00:00Z", "updated_at": "2026-11-24T00:00:00Z",
         }
 
@@ -61,7 +62,8 @@ def test_create_personal_task_defaults(client: TestClient) -> None:
         ({"title": "a", "estimated_minutes": 1.5}, "estimated_minutes"),
         ({"title": "a", "estimated_minutes": "30"}, "estimated_minutes"),
         ({"title": "a", "estimated_minutes": True}, "estimated_minutes"),
-        ({"title": "a", "status": "cancelled"}, "status"),  # P1 전에는 허용하지 않음
+        ({"title": "a", "status": "cancelled"}, "status"),  # 새 업무를 제외 상태로 만들 수는 없음
+        ({"title": "a", "cancel_reason": "x"}, "cancel_reason"),  # 생성 시 사유 없음
         ({"title": "a", "priority": "asap"}, "priority"),
         ({"title": "a", "project_id": "not-a-uuid"}, "project_id"),
         ({"title": "a", "completed_at": "2026-11-24T00:00:00Z"}, "completed_at"),  # 서버(DB 트리거)가 정한다
@@ -96,6 +98,24 @@ def test_patch_null_status_rejected(client: TestClient) -> None:
 def test_patch_null_project_is_allowed_shape(client: TestClient) -> None:
     # 검증은 통과하고(개인 업무 전환), 저장소가 None을 돌려주므로 404
     assert client.patch(f"/tasks/{uuid4()}", json={"project_id": None}).status_code == 404
+
+
+def test_patch_cancel_with_reason_passes_validation(client: TestClient) -> None:
+    # 검증 통과 → 저장소가 None(없음)을 돌려주므로 404
+    res = client.patch(f"/tasks/{uuid4()}", json={"status": "cancelled", "cancel_reason": "필요 없어짐"})
+    assert res.status_code == 404
+
+
+def test_patch_reason_with_other_status_rejected(client: TestClient) -> None:
+    res = client.patch(f"/tasks/{uuid4()}", json={"status": "todo", "cancel_reason": "x"})
+    assert res.status_code == 422
+    assert res.json()["errors"]["cancel_reason"] == "제외 사유는 업무를 제외할 때만 입력할 수 있습니다."
+
+
+def test_patch_reason_too_long(client: TestClient) -> None:
+    res = client.patch(f"/tasks/{uuid4()}", json={"status": "cancelled", "cancel_reason": "x" * 501})
+    assert res.status_code == 422
+    assert "cancel_reason" in res.json()["errors"]
 
 
 def test_missing_task_404(client: TestClient) -> None:

@@ -7,9 +7,10 @@ import { ApiError } from "@/lib/api/client";
 import { PROJECT_STATUS_LABEL, isEditableStatus, listProjects, projectKeys } from "@/lib/api/projects";
 import {
   ESTIMATED_MINUTES_MAX, TASK_PRIORITIES, TASK_PRIORITY_LABEL, TASK_STATUSES, TASK_STATUS_LABEL,
-  createTask, taskKeys, updateTask,
+  createTask, updateTask,
   type Task, type TaskInput, type TaskPriority, type TaskStatus,
 } from "@/lib/api/tasks";
+import { invalidateWorkData } from "@/lib/api/invalidate";
 
 const TITLE_MAX = 300;
 const DESCRIPTION_MAX = 2000;
@@ -25,14 +26,14 @@ type Fields = {
 };
 type FieldErrors = Partial<Record<keyof Fields | "_form", string>>;
 
-function initialFields(task?: Task, defaultProjectId?: string | null): Fields {
+function initialFields(task?: Task, defaultProjectId?: string | null, defaultDueDate?: string | null): Fields {
   return {
     title: task?.title ?? "",
     description: task?.description ?? "",
     project_id: task ? task.project_id ?? "" : defaultProjectId ?? "",
     status: task?.status ?? "todo",
     priority: task?.priority ?? "medium",
-    due_date: task?.due_date ?? "",
+    due_date: task ? task.due_date ?? "" : defaultDueDate ?? "",
     estimated_minutes: task?.estimated_minutes ? String(task.estimated_minutes) : "",
   };
 }
@@ -58,17 +59,19 @@ type Props = {
   task?: Task;
   /** 생성 시 미리 선택할 프로젝트 (프로젝트 상세에서 추가할 때) */
   defaultProjectId?: string | null;
+  /** 생성 시 미리 채울 마감일 (대시보드 '오늘의 업무'에서 추가할 때) */
+  defaultDueDate?: string | null;
   onClose: () => void;
 };
 
 /** 열 때마다 새로 마운트해서 사용한다: `{open && <TaskFormDialog … />}` */
-export function TaskFormDialog({ task, defaultProjectId, onClose }: Props) {
+export function TaskFormDialog({ task, defaultProjectId, defaultDueDate, onClose }: Props) {
   const isEdit = Boolean(task);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const formId = useId();
   const queryClient = useQueryClient();
 
-  const [fields, setFields] = useState<Fields>(() => initialFields(task, defaultProjectId));
+  const [fields, setFields] = useState<Fields>(() => initialFields(task, defaultProjectId, defaultDueDate));
   const [errors, setErrors] = useState<FieldErrors>({});
 
   const projectsQuery = useQuery({ queryKey: projectKeys.list(), queryFn: listProjects });
@@ -83,9 +86,8 @@ export function TaskFormDialog({ task, defaultProjectId, onClose }: Props) {
   const mutation = useMutation({
     mutationFn: (input: TaskInput) => (task ? updateTask(task.id, input) : createTask(input)),
     onSuccess: () => {
-      // 업무 변경은 프로젝트 진행률에도 영향을 준다
-      queryClient.invalidateQueries({ queryKey: taskKeys.all });
-      queryClient.invalidateQueries({ queryKey: projectKeys.all });
+      // 업무 변경은 프로젝트 진행률·대시보드 KPI에도 영향을 준다
+      invalidateWorkData(queryClient);
       onClose();
     },
     onError: (error) => {
@@ -203,6 +205,8 @@ export function TaskFormDialog({ task, defaultProjectId, onClose }: Props) {
               상태
               <select value={fields.status} onChange={(e) => update("status", e.target.value as TaskStatus)} className={inputClass(false)}>
                 {TASK_STATUSES.map((s) => <option key={s} value={s}>{TASK_STATUS_LABEL[s]}</option>)}
+                {/* 제외된 업무를 수정할 때만 현재 값으로 남겨 둔다 (새로 제외하는 것은 상태 메뉴에서) */}
+                {task?.status === "cancelled" && <option value="cancelled">{TASK_STATUS_LABEL.cancelled}</option>}
               </select>
             </label>
             <label className="block text-sm font-medium">

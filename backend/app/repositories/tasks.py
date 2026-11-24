@@ -14,15 +14,15 @@ LIST_LIMIT = 500  # 페이지 나누기를 도입하기 전 안전장치
 _SELECT = """
 select
   t.id, t.project_id, p.name as project_name, t.title, t.description, t.status, t.priority,
-  t.due_date, t.estimated_minutes, t.completed_at, t.created_at, t.updated_at
+  t.due_date, t.estimated_minutes, t.completed_at, t.cancelled_at, t.cancel_reason, t.created_at, t.updated_at
 from public.tasks t
 left join public.projects p on p.id = t.project_id and p.user_id = t.user_id
 """
 
-# 미완료 먼저 → 마감일 빠른 순(없으면 뒤) → 우선순위 높은 순 → 최근 생성 순
+# 진행 중인 업무 먼저 → 완료 → 제외 순, 그 안에서 마감일 빠른 순(없으면 뒤) → 우선순위 높은 순 → 최근 생성 순
 _ORDER = """
 order by
-  (t.status = 'completed') asc,
+  case t.status when 'cancelled' then 2 when 'completed' then 1 else 0 end asc,
   t.due_date asc nulls last,
   case t.priority when 'urgent' then 0 when 'high' then 1 when 'medium' then 2 else 3 end asc,
   t.created_at desc
@@ -64,6 +64,9 @@ def list_tasks(
     if status is not None:
         conditions.append(sql.SQL("t.status = %(status)s"))
         params["status"] = status
+    else:
+        # 제외한 업무는 기본 목록에서 숨기고, status=cancelled 필터로만 본다
+        conditions.append(sql.SQL("t.status <> 'cancelled'"))
     if priority is not None:
         conditions.append(sql.SQL("t.priority = %(priority)s"))
         params["priority"] = priority

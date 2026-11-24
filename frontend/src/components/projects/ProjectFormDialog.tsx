@@ -8,6 +8,7 @@ import {
   EDITABLE_PROJECT_STATUSES, PROJECT_STATUS_LABEL, createProject, isEditableStatus, projectKeys, updateProject,
   type EditableProjectStatus, type Project, type ProjectInput,
 } from "@/lib/api/projects";
+import { invalidateWorkData } from "@/lib/api/invalidate";
 
 const NAME_MAX = 200;
 const DESCRIPTION_MAX = 2000;
@@ -59,7 +60,8 @@ export function ProjectFormDialog({ project, onClose, onSaved }: Props) {
     mutationFn: (input: ProjectInput) => (project ? updateProject(project.id, input) : createProject(input)),
     onSuccess: (saved) => {
       queryClient.setQueryData(projectKeys.detail(saved.id), saved);
-      queryClient.invalidateQueries({ queryKey: projectKeys.all });
+      // 프로젝트 목록·대시보드, 그리고 업무 행에 표시되는 프로젝트명까지 갱신
+      invalidateWorkData(queryClient);
       onSaved?.(saved);
       onClose();
     },

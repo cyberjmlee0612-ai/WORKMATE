@@ -27,8 +27,9 @@ export type Project = {
   due_date: string | null;
   created_at: string;
   updated_at: string;
-  total_tasks: number;
+  total_tasks: number; // 제외된 업무는 빠진 수
   completed_tasks: number;
+  cancelled_tasks: number;
   progress: number; // 0–100 정수(내림)
 };
 

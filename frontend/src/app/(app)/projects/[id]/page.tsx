@@ -106,7 +106,7 @@ export default function ProjectDetailPage({ params }: PageProps<"/projects/[id]"
         </div>
       </section>
 
-      <ProjectTasksSection projectId={project.id} />
+      <ProjectTasksSection projectId={project.id} cancelledCount={project.cancelled_tasks} />
 
       {editOpen && <ProjectFormDialog project={project} onClose={() => setEditOpen(false)} />}
     </>

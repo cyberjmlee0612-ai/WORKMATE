@@ -26,7 +26,7 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     def fake_create(db: Any, user_id: UUID, data: Any) -> dict[str, Any]:
         return {
             "id": uuid4(), **data.model_dump(), "created_at": "2026-11-24T00:00:00Z", "updated_at": "2026-11-24T00:00:00Z",
-            "total_tasks": 0, "completed_tasks": 0, "progress": 0,
+            "total_tasks": 0, "completed_tasks": 0, "cancelled_tasks": 0, "progress": 0,
         }
 
     monkeypatch.setattr(projects.repo, "create_project", fake_create)

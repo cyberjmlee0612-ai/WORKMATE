@@ -8,17 +8,21 @@ from psycopg.rows import DictRow
 
 from app.schemas.project import ProjectCreate, ProjectUpdate, check_date_order
 
-# 진행률 = completed 업무 수 ÷ 전체 업무 수 × 100, 정수 내림. 업무가 없으면 0.
-# P1에서 cancelled가 생기면 total 계산에서 제외하도록 이 쿼리만 바꾸면 된다.
+# 진행률 = completed 업무 수 ÷ 제외(cancelled)되지 않은 업무 수 × 100, 정수 내림. 업무가 없으면 0.
+# 제외한 업무는 분자·분모 모두에서 빠지고, 개수는 cancelled_tasks로 따로 돌려준다.
 _SELECT_WITH_PROGRESS = """
 select
   p.id, p.name, p.description, p.status, p.start_date, p.due_date, p.created_at, p.updated_at,
   coalesce(t.total, 0)::int as total_tasks,
   coalesce(t.completed, 0)::int as completed_tasks,
+  coalesce(t.cancelled, 0)::int as cancelled_tasks,
   coalesce(t.completed * 100 / nullif(t.total, 0), 0)::int as progress
 from public.projects p
 left join lateral (
-  select count(*) as total, count(*) filter (where status = 'completed') as completed
+  select
+    count(*) filter (where status <> 'cancelled') as total,
+    count(*) filter (where status = 'completed') as completed,
+    count(*) filter (where status = 'cancelled') as cancelled
   from public.tasks
   where tasks.project_id = p.id and tasks.user_id = p.user_id
 ) t on true
