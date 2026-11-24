@@ -1,0 +1,78 @@
+@import "pretendard/dist/web/variable/pretendardvariable.css";
+@import "tailwindcss";
+
+:root {
+  --primary-dark: #244c3b;
+  --primary: #356b52;
+  --pale-green: #e7f0ea;
+  --sage: #8faf9b;
+  --soft-sage: #c7d8ca;
+  --background: #f8f8f5;
+  --surface: #ffffff;
+  --border: #e7e9e5;
+  --foreground: #303b35;
+  --muted: #607268;
+  --card-shadow: 0 16px 42px -30px rgba(36, 76, 59, 0.38);
+  --floating-shadow: 0 22px 60px -35px rgba(36, 76, 59, 0.48);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary-dark: var(--primary-dark);
+  --color-primary: var(--primary);
+  --color-pale-green: var(--pale-green);
+  --color-sage: var(--sage);
+  --color-soft-sage: var(--soft-sage);
+  --color-surface: var(--surface);
+  --color-border: var(--border);
+  --color-muted: var(--muted);
+  --font-sans: var(--font-geist-sans), "Pretendard Variable", Arial, sans-serif;
+  --font-mono: var(--font-geist-mono), monospace;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), "Pretendard Variable", Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+}
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; }
+:focus-visible { outline: 3px solid var(--primary); outline-offset: 3px; }
+.font-geist { font-family: var(--font-geist-sans), "Pretendard Variable", sans-serif; }
+.font-code { font-family: var(--font-geist-mono), monospace; }
+.surface-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--card-shadow);
+}
+.glass-panel {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.94);
+  box-shadow: var(--card-shadow);
+}
+.liquid-accent {
+  background: radial-gradient(circle at 88% 12%, rgba(255,255,255,.88), transparent 38%),
+    radial-gradient(circle at 15% 90%, rgba(143,175,155,.3), transparent 52%),
+    linear-gradient(135deg, rgba(231,240,234,.92), rgba(199,216,202,.7));
+  border: 1px solid rgba(255,255,255,.9);
+  box-shadow: var(--floating-shadow);
+}
+@supports (backdrop-filter: blur(1px)) {
+  .glass-panel { backdrop-filter: blur(16px); }
+  .liquid-accent { backdrop-filter: blur(12px); }
+}
+@media (max-width: 767px) {
+  @supports (backdrop-filter: blur(1px)) {
+    .glass-panel { backdrop-filter: blur(6px); }
+    .liquid-accent { backdrop-filter: blur(5px); }
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}
