@@ -2,20 +2,24 @@
 
 import { use, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, CalendarDays, FolderSearch, Pencil } from "lucide-react";
+import { ArrowLeft, CalendarDays, FolderSearch, Pencil, Trash2 } from "lucide-react";
 import { ApiError } from "@/lib/api/client";
 import { getProject, projectKeys } from "@/lib/api/projects";
 import { formatDate } from "@/lib/format";
 import { ProgressBar } from "@/components/projects/ProgressBar";
 import { ProjectStatusBadge } from "@/components/projects/ProjectStatusBadge";
 import { ProjectFormDialog } from "@/components/projects/ProjectFormDialog";
+import { DeleteProjectDialog } from "@/components/projects/DeleteProjectDialog";
 import { EmptyState, ErrorState } from "@/components/common/QueryStates";
 import { ProjectTasksSection } from "@/components/tasks/ProjectTasksSection";
 
 export default function ProjectDetailPage({ params }: PageProps<"/projects/[id]">) {
   const { id } = use(params);
+  const router = useRouter();
   const [editOpen, setEditOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const { data: project, isPending, isError, error, refetch, isRefetching } = useQuery({
     queryKey: projectKeys.detail(id),
     queryFn: () => getProject(id),
@@ -72,10 +76,16 @@ export default function ProjectDetailPage({ params }: PageProps<"/projects/[id]"
             <p className="mt-3 text-sm text-muted">설명이 없습니다.</p>
           )}
         </div>
-        <button type="button" onClick={() => setEditOpen(true)} className="flex min-h-11 items-center gap-2 rounded-xl border border-border bg-surface px-4 text-sm font-semibold text-primary-dark hover:bg-pale-green">
-          <Pencil size={16} strokeWidth={2} aria-hidden="true" />
-          수정
-        </button>
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={() => setEditOpen(true)} className="flex min-h-11 items-center gap-2 rounded-xl border border-border bg-surface px-4 text-sm font-semibold text-primary-dark hover:bg-pale-green">
+            <Pencil size={16} strokeWidth={2} aria-hidden="true" />
+            수정
+          </button>
+          <button type="button" onClick={() => setDeleteOpen(true)} className="flex min-h-11 items-center gap-2 rounded-xl border border-border bg-surface px-4 text-sm font-semibold text-red-700 hover:border-red-200 hover:bg-red-50">
+            <Trash2 size={16} strokeWidth={2} aria-hidden="true" />
+            삭제
+          </button>
+        </div>
       </header>
 
       <section className="mt-8 grid gap-4 md:grid-cols-2" aria-label="프로젝트 정보">
@@ -109,6 +119,7 @@ export default function ProjectDetailPage({ params }: PageProps<"/projects/[id]"
       <ProjectTasksSection projectId={project.id} cancelledCount={project.cancelled_tasks} />
 
       {editOpen && <ProjectFormDialog project={project} onClose={() => setEditOpen(false)} />}
+      {deleteOpen && <DeleteProjectDialog project={project} onClose={() => setDeleteOpen(false)} onDeleted={() => router.replace("/projects")} />}
     </>
   );
 }

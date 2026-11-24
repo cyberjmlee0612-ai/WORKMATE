@@ -7,6 +7,8 @@ export class ApiError extends Error {
     public readonly detail?: unknown,
     /** 입력 검증 오류(422)의 필드별 메시지. 예: { name: "프로젝트 이름을 입력해 주세요." } */
     public readonly fieldErrors: Record<string, string> = {},
+    /** 응답 본문 전체 (예: 409 tasks_changed의 최신 업무 목록) */
+    public readonly body?: unknown,
   ) {
     super(message);
     this.name = "ApiError";
@@ -53,7 +55,7 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
     const body = await response.json().catch(() => null);
     const detail = body?.detail;
     const message = typeof detail === "string" ? detail : "요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.";
-    throw new ApiError(response.status, message, detail, body?.errors ?? {});
+    throw new ApiError(response.status, message, detail, body?.errors ?? {}, body);
   }
 
   if (response.status === 204) return undefined as T;

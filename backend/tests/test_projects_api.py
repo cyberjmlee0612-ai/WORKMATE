@@ -90,5 +90,38 @@ def test_patch_missing_returns_404(client: TestClient) -> None:
     assert client.patch(f"/projects/{uuid4()}", json={"name": "새 이름"}).status_code == 404
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"mode": "archive", "expected_task_ids": []},  # 알 수 없는 방식
+        {"mode": "move"},  # 확인한 목록 누락
+        {"mode": "move", "expected_task_ids": ["not-a-uuid"]},
+        {"mode": "move", "expected_task_ids": [], "keep_task_ids": ["11111111-1111-1111-1111-111111111111"] * 2},  # 중복
+        {"mode": "delete", "expected_task_ids": [], "user_id": "x"},  # 정의되지 않은 필드
+    ],
+)
+def test_delete_request_validation(client: TestClient, payload: dict[str, Any]) -> None:
+    assert client.post(f"/projects/{uuid4()}/delete", json=payload).status_code == 422
+
+
+def test_delete_missing_project_404(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    def raise_not_found(*args: Any, **kwargs: Any) -> None:
+        raise projects.deletion_repo.ProjectNotFound
+
+    monkeypatch.setattr(projects.deletion_repo, "delete_project", raise_not_found)
+    res = client.post(f"/projects/{uuid4()}/delete", json={"mode": "delete", "expected_task_ids": []})
+    assert res.status_code == 404
+
+
+def test_delete_tasks_changed_409(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    def raise_changed(*args: Any, **kwargs: Any) -> None:
+        raise projects.deletion_repo.TasksChanged([])
+
+    monkeypatch.setattr(projects.deletion_repo, "delete_project", raise_changed)
+    res = client.post(f"/projects/{uuid4()}/delete", json={"mode": "delete", "expected_task_ids": []})
+    assert res.status_code == 409
+    assert res.json()["code"] == "tasks_changed" and res.json()["tasks"] == []
+
+
 def test_invalid_uuid_returns_422(client: TestClient) -> None:
     assert client.get("/projects/not-a-uuid").status_code == 422
