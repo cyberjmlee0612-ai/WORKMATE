@@ -11,6 +11,7 @@ import {
   type Task, type TaskInput, type TaskPriority, type TaskStatus,
 } from "@/lib/api/tasks";
 import { invalidateWorkData } from "@/lib/api/invalidate";
+import { EstimateHint } from "./EstimateHint";
 import { buildTree, pathLabel } from "@/lib/projectTree";
 
 const TITLE_MAX = 300;
@@ -225,11 +226,15 @@ export function TaskFormDialog({ task, defaultProjectId, defaultDueDate, onClose
               <input type="date" value={fields.due_date} onChange={(e) => update("due_date", e.target.value)} className={inputClass(Boolean(errors.due_date))} {...a11y("due_date")} />
               {errorText("due_date")}
             </label>
-            <label className="block text-sm font-medium">
-              예상 시간 (분)
-              <input type="text" inputMode="numeric" value={fields.estimated_minutes} onChange={(e) => update("estimated_minutes", e.target.value)} className={inputClass(Boolean(errors.estimated_minutes))} placeholder="예: 90" {...a11y("estimated_minutes")} />
-              {errorText("estimated_minutes")}
-            </label>
+            <div>
+              <label className="block text-sm font-medium">
+                예상 시간 (분)
+                <input type="text" inputMode="numeric" value={fields.estimated_minutes} onChange={(e) => update("estimated_minutes", e.target.value)} className={inputClass(Boolean(errors.estimated_minutes))} placeholder="예: 90" {...a11y("estimated_minutes")} />
+                {errorText("estimated_minutes")}
+              </label>
+              {/* 내 기록 기반 보정 제안 (label 밖: 버튼을 눌러도 입력칸으로 포커스가 옮겨지지 않게) */}
+              <EstimateHint value={fields.estimated_minutes} onApply={(m) => update("estimated_minutes", String(m))} />
+            </div>
           </div>
         </fieldset>
 

@@ -11,7 +11,7 @@ import { toLocalDateString, useToday, userTimeZone } from "@/lib/date";
 import { parseDateParam } from "@/lib/time";
 import { AiReviewCard } from "./AiReviewCard";
 import { DailyChart } from "./ReportCharts";
-import { Estimates, ProjectBreakdown, SummaryCards, TopTasks } from "./ReportSections";
+import { CalibrationSummary, Estimates, ProjectBreakdown, SummaryCards, TopTasks } from "./ReportSections";
 import { dayCount, periodKey, periodTitle, resolvePeriod, shiftAnchor, validateCustom, type Period, type PeriodMode } from "./period";
 
 const toggleClass = (active: boolean) =>
@@ -108,6 +108,7 @@ function ReportBody({ today }: { today: string }) {
               <TopTasks report={report} />
             </Card>
             <Card title="예상 vs 실제" description="이 기간에 완료한 업무의 예상 시간과 실제 기록 시간(전체)을 비교해요.">
+              <CalibrationSummary />
               <Estimates report={report} />
             </Card>
           </div>

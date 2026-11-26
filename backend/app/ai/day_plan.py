@@ -18,6 +18,7 @@ from psycopg.rows import DictRow
 from pydantic import BaseModel, Field
 
 from app.ai.provider import BreakdownProvider
+from app.repositories import estimates as estimate_repo
 from app.repositories import tasks as task_repo
 from app.repositories import time_entries as entry_repo
 from app.repositories import time_plans as plan_repo
@@ -47,7 +48,7 @@ SYSTEM_PROMPT = """너는 한국어 업무 관리 서비스 WORKMATE의 하루 �
 - 반드시 '일할 시간' 구간 안에만, '피할 시간'과 '이미 있는 일정'을 피해서 배치한다. 한 블록은 한 구간 안에 들어가야 한다.
 - 블록끼리 겹치지 않게, 시작·끝은 10분 단위(HH:MM, 24시간)로.
 - 마감이 지났거나 가까운 업무, 우선순위가 높은 업무를 먼저, 집중이 필요한 일은 오전에.
-- 블록 길이는 예상 시간에서 이미 계획·기록한 시간을 뺀 만큼을 기준으로, 한 블록은 보통 30분~2시간. 긴 업무는 나눠도 된다.
+- 블록 길이는 예상 시간(보정값이 있으면 보정값 — 이 사용자가 실제로 걸린 시간 기준)에서 이미 계획·기록한 시간을 뺀 만큼을 기준으로, 한 블록은 보통 30분~2시간. 긴 업무는 나눠도 된다.
 - 예상 시간이 없는 업무는 30~60분으로 잡는다.
 - 일할 시간을 꽉 채우지 말고 블록 사이에 10분 정도 여유를 둔다.
 - 업무는 주어진 번호(T1, T2 …)로만 가리킨다. 목록에 없는 업무를 만들지 않는다.
@@ -111,6 +112,8 @@ def build_prompt(
     for i, t in enumerate(candidates, start=1):
         due = t["due_date"].isoformat() if t["due_date"] else "-"
         est = f"{t['estimated_minutes']}분" if t["estimated_minutes"] else "-"
+        if t.get("adjusted_minutes"):
+            est += f"(보정 {t['adjusted_minutes']}분)"
         lines.append(
             f"T{i} | {t['title']} | {t['project_path'] or '개인 업무'} | {t['priority']} | {due} | {est} | {t['planned_minutes']}분 | {t['tracked_minutes']}분"
         )
@@ -168,6 +171,9 @@ def suggest(
 
     # 남은 업무: 완료·제외 아닌 것, 마감·우선순위 순 (list_tasks의 정렬)
     candidates = [dict(t) for t in task_repo.list_tasks(db, user_id) if t["status"] != "completed"][:MAX_CANDIDATES]
+    cal = estimate_repo.calibration(db, user_id)
+    for t in candidates:
+        t["adjusted_minutes"] = estimate_repo.adjust(t["estimated_minutes"], cal)
     if not candidates:
         return {"summary": "", "blocks": [], "reason": "no_tasks"}
 

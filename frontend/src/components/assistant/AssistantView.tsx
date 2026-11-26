@@ -11,6 +11,7 @@ import { listProjects, projectKeys } from "@/lib/api/projects";
 import { ESTIMATED_MINUTES_MAX, TASK_PRIORITIES, TASK_PRIORITY_LABEL, type TaskInput, type TaskPriority } from "@/lib/api/tasks";
 import { userTimeZone } from "@/lib/date";
 import { activeProjectOptions } from "@/lib/projectTree";
+import { EstimateHint } from "@/components/tasks/EstimateHint";
 
 type Row = {
   key: string;
@@ -344,6 +345,7 @@ export function AssistantView() {
                           <input type="date" value={r.due} onChange={(ev) => update(r.key, { due: ev.target.value })} disabled={!r.include || save.isPending} className={inputClass(Boolean(e.due_date))} aria-label={`${index + 1}번 마감일`} />
                         </div>
                         {(e.estimated_minutes || e.due_date) && <p className="text-xs text-red-700">{e.estimated_minutes ?? e.due_date}</p>}
+                        {r.include && !save.isPending && <EstimateHint compact value={r.minutes} onApply={(m) => update(r.key, { minutes: String(m) })} />}
                         {(r.description || r.include) && (
                           <input value={r.description} onChange={(ev) => update(r.key, { description: ev.target.value })} disabled={!r.include || save.isPending} placeholder="메모 (선택)" className={`${inputClass(Boolean(e.description))} text-xs`} aria-label={`${index + 1}번 메모`} />
                         )}

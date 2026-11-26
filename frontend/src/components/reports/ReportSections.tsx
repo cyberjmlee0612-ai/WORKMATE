@@ -5,6 +5,7 @@ import Link from "next/link";
 import { CalendarCheck2, ChevronRight, CircleCheckBig, Clock, Gauge } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { Report, ReportProject } from "@/lib/api/reports";
+import { ratioLabel, useCalibration, type CalibrationBucket } from "@/lib/api/estimates";
 import { ShareDonut, type Slice } from "./ReportCharts";
 import { fmtMinutes } from "./period";
 
@@ -188,6 +189,30 @@ export function TopTasks({ report }: { report: Report }) {
         </li>
       ))}
     </ol>
+  );
+}
+
+/**
+ * 예상 시간 보정 비율 (기간과 무관하게 최근 60일 기준). 업무 입력 창·AI 나누기·자동 배치가 이 비율로 보정한다.
+ */
+export function CalibrationSummary() {
+  const { data: cal } = useCalibration();
+  if (!cal) return null;
+  const item = (label: string, b: CalibrationBucket) =>
+    b.ratio !== null ? (
+      <span><span className="text-muted">{label}</span> <strong className="font-semibold">{ratioLabel(b.ratio)}</strong></span>
+    ) : (
+      <span className="text-muted">{label} 근거 부족 ({b.samples}/{cal.min_samples}개)</span>
+    );
+  return (
+    <div className="mb-3 rounded-xl border border-border px-3.5 py-2.5 text-sm text-primary-dark">
+      <p className="flex items-center gap-1.5 font-semibold"><Gauge size={14} strokeWidth={2} aria-hidden="true" />내 예상 시간 보정 비율 <span className="font-normal text-muted">(최근 {cal.lookback_days}일)</span></p>
+      <p className="mt-1 flex flex-wrap gap-x-4 gap-y-0.5">
+        {item("짧은 일(1시간 미만)", cal.short)}
+        {item("긴 일(1시간 이상)", cal.long)}
+      </p>
+      <p className="mt-1 text-xs text-muted">업무를 입력하거나 시간표에 자동 배치할 때 이 비율로 예상 시간을 보정해요. 1에 가까울수록 예상이 정확해요.</p>
+    </div>
   );
 }
 

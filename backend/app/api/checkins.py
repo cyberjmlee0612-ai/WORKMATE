@@ -21,6 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.core.auth import CurrentUserDep
 from app.core.errors import FieldError
 from app.db import UserDbDep
+from app.repositories import estimates as estimate_repo
 from app.repositories import slots
 from app.repositories import tasks as task_repo
 from app.schemas.task import TaskOut
@@ -254,13 +255,23 @@ def post_review(day: date, body: ReviewIn, user: CurrentUserDep, db: UserDbDep) 
 _free_gaps = slots.free_gaps
 
 
-def place(tasks: list[dict[str, Any]], windows: list[tuple[int, int]], taken: list[tuple[int, int]], not_before: int) -> tuple[list[tuple[dict, int, int]], list[dict]]:
-    """업무마다 (예상 시간 - 기록한 시간, 없으면 60분)을 10분 단위로 맞춰 가장 이른 빈칸에 넣는다. 맞는 빈칸이 없으면 넣지 않는다."""
+def place(
+    tasks: list[dict[str, Any]],
+    windows: list[tuple[int, int]],
+    taken: list[tuple[int, int]],
+    not_before: int,
+    calibration: dict[str, Any] | None = None,
+) -> tuple[list[tuple[dict, int, int]], list[dict]]:
+    """업무마다 (예상 시간 - 기록한 시간, 없으면 60분)을 10분 단위로 맞춰 가장 이른 빈칸에 넣는다. 맞는 빈칸이 없으면 넣지 않는다.
+    calibration이 있으면 예상 시간 대신 보정한 예상 시간을 쓴다 (2026-11-26 사용자 확정)."""
     taken = list(taken)
     placed: list[tuple[dict, int, int]] = []
     unplaced: list[dict] = []
     for task in tasks:
-        remaining = (task["estimated_minutes"] or 0) - (task["tracked_minutes"] or 0)
+        estimate = task["estimated_minutes"]
+        if estimate and calibration:
+            estimate = estimate_repo.adjust(estimate, calibration) or estimate
+        remaining = (estimate or 0) - (task["tracked_minutes"] or 0)
         minutes = remaining if task["estimated_minutes"] and remaining >= 30 else (30 if task["estimated_minutes"] else DEFAULT_MINUTES)
         minutes = min(MAX_BLOCK_MINUTES, -(-minutes // SNAP) * SNAP)
         gap = next(((a, b) for a, b in _free_gaps(windows, taken, not_before) if b - a >= minutes), None)
@@ -294,7 +305,7 @@ def get_placement(day: date, user: CurrentUserDep, db: UserDbDep, tz: str = Quer
         ).fetchall()
     }
     tasks = [f["task"] for f in _focus_rows(db, user.id, day) if f["task"]["status"] != "completed" and f["task"]["id"] not in planned_ids]
-    placed, unplaced = place(tasks, windows, taken, not_before)
+    placed, unplaced = place(tasks, windows, taken, not_before, estimate_repo.calibration(db, user.id))
     return {
         "blocks": [
             {"task_id": t["id"], "task_title": t["title"], "starts_at": day_start + timedelta(minutes=a), "ends_at": day_start + timedelta(minutes=b)}
