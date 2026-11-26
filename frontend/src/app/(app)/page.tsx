@@ -21,6 +21,7 @@ import { useToday, userTimeZone } from "@/lib/date";
 import { useNowMinute } from "@/lib/time";
 import { cheerOfDay, greetingFor } from "@/lib/cheers";
 import { Briefing } from "@/components/dashboard/Briefing";
+import { CheckinCard } from "@/components/dashboard/CheckinCard";
 
 const headerDateFormatter = new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric" });
 
@@ -82,6 +83,7 @@ export default function HomePage() {
         </div>
       ) : (
         <>
+          {today && <CheckinCard today={today} nowMinute={nowMinute} schedule={data?.today_schedule ?? []} />}
           {data && today ? <Briefing data={data} today={today} /> : <div className="mt-6 h-36 animate-pulse rounded-[20px] bg-pale-green/40" aria-hidden="true" />}
           <section className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4 lg:gap-5" aria-label="요약 지표" aria-busy={loading}>
             <SummaryCard title="전체 프로젝트" value={kpi ? pad(kpi.total_projects) : null} description="보관한 프로젝트 제외" icon={FolderKanban} />

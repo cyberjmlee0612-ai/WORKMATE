@@ -1,4 +1,5 @@
 import type { QueryClient } from "@tanstack/react-query";
+import { checkinKeys } from "./checkins";
 import { dashboardKeys } from "./dashboard";
 import { eventKeys } from "./events";
 import { projectKeys } from "./projects";
@@ -18,6 +19,7 @@ export function invalidateWorkData(queryClient: QueryClient) {
     queryClient.invalidateQueries({ queryKey: projectKeys.all }),
     queryClient.invalidateQueries({ queryKey: dashboardKeys.all }),
     queryClient.invalidateQueries({ queryKey: reportKeys.all }),
-    queryClient.invalidateQueries({ queryKey: eventKeys.all }), // 프로젝트를 지우면 이벤트가 개인 이벤트로 바뀐다
+    queryClient.invalidateQueries({ queryKey: eventKeys.all }),
+    queryClient.invalidateQueries({ queryKey: checkinKeys.all }), // 꼭 할 일의 완료 상태·추천이 업무에 따라 바뀐다 // 프로젝트를 지우면 이벤트가 개인 이벤트로 바뀐다
   ]);
 }
