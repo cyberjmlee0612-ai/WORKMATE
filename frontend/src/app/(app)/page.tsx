@@ -1,12 +1,16 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { Suspense, useState, type ReactNode } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import {
-  Bell, ChartNoAxesCombined, Check, FolderKanban,
-  Plus, UserRound, ListTodo, ArrowRight, TriangleAlert, CalendarClock,
+  Bell, CalendarHeart, ChartNoAxesCombined, Check, FolderKanban,
+  Plus, Sun, UserRound, ListTodo, ArrowRight, TriangleAlert, CalendarClock,
 } from "lucide-react";
+import { EventDialog } from "@/components/events/EventDialog";
+import { EventRow } from "@/components/events/ProjectEventsSection";
+import { eventKeys, listEvents, type WorkEvent } from "@/lib/api/events";
 import type { LucideIcon } from "lucide-react";
 import { LogoutButton } from "@/components/auth/LogoutButton";
 import { ProjectFormDialog } from "@/components/projects/ProjectFormDialog";
@@ -34,7 +38,28 @@ function formatHeaderDate(today: string) {
 /** 지표 숫자는 기존 디자인처럼 두 자리로 표시 (04, 28) */
 const pad = (n: number) => String(n).padStart(2, "0");
 
+/**
+ * 대시보드 두 모드 (2026-11-26 사용자 요청: 너무 복잡해서 나눔)
+ * - 나의 하루(기본): 스스로 개선하는 데 쓰는 화면 — 밀린 계획, 체크인·마무리, 브리핑, 오늘의 업무
+ * - 프로젝트 현황: 프로젝트만 모아 보는 화면 — 요약 지표, 진행 중 프로젝트, 프로젝트 이벤트
+ * 모드는 주소(?view=projects)에 남겨 새로고침·뒤로 가기에도 유지한다.
+ */
 export default function HomePage() {
+  // useSearchParams를 쓰므로 Suspense 경계가 필요하다
+  return (
+    <Suspense fallback={null}>
+      <Dashboard />
+    </Suspense>
+  );
+}
+
+type View = "me" | "projects";
+
+function Dashboard() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const view: View = searchParams.get("view") === "projects" ? "projects" : "me";
+  const setView = (next: View) => router.replace(next === "me" ? "/" : "/?view=projects", { scroll: false });
   const today = useToday();
   const nowMinute = useNowMinute();
   const [projectFormOpen, setProjectFormOpen] = useState(false);
@@ -78,15 +103,65 @@ export default function HomePage() {
         </div>
       </header>
 
+      <div className="mt-6 inline-flex rounded-xl bg-pale-green/70 p-1" role="tablist" aria-label="대시보드 보기">
+        {([["me", "나의 하루", Sun], ["projects", "프로젝트 현황", FolderKanban]] as const).map(([key, label, Icon]) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={view === key}
+            onClick={() => setView(key)}
+            className={`flex min-h-11 items-center gap-2 rounded-lg px-4 text-sm font-semibold ${view === key ? "bg-surface text-primary-dark shadow-sm" : "text-muted hover:text-primary-dark"}`}
+          >
+            <Icon size={16} strokeWidth={2} aria-hidden="true" />
+            {label}
+          </button>
+        ))}
+      </div>
+
       {isError ? (
         <div className="mt-9">
           <ErrorState message={error.message} onRetry={() => refetch()} retrying={isRefetching} />
         </div>
-      ) : (
+      ) : view === "me" ? (
         <>
           <MissedPlansCard />
           {today && <CheckinCard today={today} nowMinute={nowMinute} schedule={data?.today_schedule ?? []} />}
           {data && today ? <Briefing data={data} today={today} /> : <div className="mt-6 h-36 animate-pulse rounded-[20px] bg-pale-green/40" aria-hidden="true" />}
+          <section className="surface-card mt-6 rounded-[20px] p-4 md:p-5 lg:p-6" aria-labelledby="tasks-heading">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div><p className="font-geist text-xs font-semibold uppercase tracking-[0.18em] text-primary">Today&apos;s focus</p><h2 id="tasks-heading" className="mt-1 text-xl font-bold text-primary-dark">오늘의 업무</h2><p className="mt-1 text-sm text-muted">마감일이 오늘이거나 지난 업무예요.</p></div>
+              {data && (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-muted">
+                    {data.today_tasks.filter((t) => t.status !== "completed").length}개 남음
+                  </span>
+                  <ViewAllLink href="/tasks" />
+                </div>
+              )}
+            </div>
+            <div className="mt-3">
+              {loading ? (
+                <TaskListSkeleton rows={3} />
+              ) : (
+                <>
+                  {data.today_tasks.length === 0 ? (
+                    <EmptyState icon={ListTodo} title="오늘 마감인 업무가 없어요" description="오늘 할 업무를 추가해 보세요." action={addTaskButton} />
+                  ) : (
+                    <TodayTaskGroups tasks={data.today_tasks} today={data.today} />
+                  )}
+                  {data.today_has_more && (
+                    <p className="mt-3 text-sm text-muted">
+                      더 많은 업무가 있어요. <Link href="/tasks" className="font-semibold text-primary hover:underline">업무 관리에서 전체 보기</Link>
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+          </section>
+        </>
+      ) : (
+        <>
           <section className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4 lg:gap-5" aria-label="요약 지표" aria-busy={loading}>
             <SummaryCard title="전체 프로젝트" value={kpi ? pad(kpi.total_projects) : null} description="보관한 프로젝트 제외" icon={FolderKanban} />
             <SummaryCard title="전체 업무" value={kpi ? pad(kpi.total_tasks) : null} description="프로젝트 업무 + 개인 업무" icon={ListTodo} />
@@ -127,37 +202,7 @@ export default function HomePage() {
             </div>
           </section>
 
-          <section className="surface-card mt-6 rounded-[20px] p-4 md:p-5 lg:p-6" aria-labelledby="tasks-heading">
-            <div className="flex flex-wrap items-end justify-between gap-3">
-              <div><p className="font-geist text-xs font-semibold uppercase tracking-[0.18em] text-primary">Today&apos;s focus</p><h2 id="tasks-heading" className="mt-1 text-xl font-bold text-primary-dark">오늘의 업무</h2><p className="mt-1 text-sm text-muted">마감일이 오늘이거나 지난 업무예요.</p></div>
-              {data && (
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-muted">
-                    {data.today_tasks.filter((t) => t.status !== "completed").length}개 남음
-                  </span>
-                  <ViewAllLink href="/tasks" />
-                </div>
-              )}
-            </div>
-            <div className="mt-3">
-              {loading ? (
-                <TaskListSkeleton rows={3} />
-              ) : (
-                <>
-                  {data.today_tasks.length === 0 ? (
-                    <EmptyState icon={ListTodo} title="오늘 마감인 업무가 없어요" description="오늘 할 업무를 추가해 보세요." action={addTaskButton} />
-                  ) : (
-                    <TodayTaskGroups tasks={data.today_tasks} today={data.today} />
-                  )}
-                  {data.today_has_more && (
-                    <p className="mt-3 text-sm text-muted">
-                      더 많은 업무가 있어요. <Link href="/tasks" className="font-semibold text-primary hover:underline">업무 관리에서 전체 보기</Link>
-                    </p>
-                  )}
-                </>
-              )}
-            </div>
-          </section>
+          {today && <ProjectEventsPanel today={today} />}
         </>
       )}
 
@@ -217,5 +262,51 @@ function ViewAllLink({ href }: { href: string }) {
       전체 보기
       <ArrowRight size={16} strokeWidth={2} aria-hidden="true" />
     </Link>
+  );
+}
+
+const PROJECT_EVENT_DAYS = 90;
+
+/** 프로젝트 현황 모드: 프로젝트에 달린 다가오는 이벤트 (90일 안) */
+function ProjectEventsPanel({ today }: { today: string }) {
+  const [y, m, d] = today.split("-").map(Number);
+  const end = new Date(Date.UTC(y, m - 1, d + PROJECT_EVENT_DAYS)).toISOString().slice(0, 10);
+  const filters = { start: today, end };
+  const query = useQuery({ queryKey: eventKeys.list(filters), queryFn: () => listEvents(filters) });
+  const [dialog, setDialog] = useState<{ mode: "create" } | { mode: "edit"; event: WorkEvent } | null>(null);
+  const events = (query.data ?? []).filter((e) => e.project_id !== null);
+
+  return (
+    <section className="surface-card mt-6 rounded-[20px] p-4 md:p-5 lg:p-6" aria-labelledby="project-events-heading">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="font-geist text-xs font-semibold uppercase tracking-[0.18em] text-primary">Milestones</p>
+          <h2 id="project-events-heading" className="mt-1 flex items-center gap-2 text-xl font-bold text-primary-dark">
+            <CalendarHeart size={20} strokeWidth={2} aria-hidden="true" />
+            프로젝트 이벤트
+          </h2>
+          <p className="mt-1 text-sm text-muted">{PROJECT_EVENT_DAYS}일 안의 시험·발표·출품·마감 날짜예요.</p>
+        </div>
+        <button type="button" onClick={() => setDialog({ mode: "create" })} className="flex min-h-11 items-center gap-1.5 rounded-xl border border-border bg-surface px-3.5 text-sm font-semibold text-primary-dark hover:bg-pale-green">
+          <Plus size={16} strokeWidth={2} aria-hidden="true" />
+          이벤트 추가
+        </button>
+      </div>
+      {query.isError ? (
+        <p className="mt-3 text-sm text-red-700" role="alert">{query.error.message}</p>
+      ) : query.isPending ? (
+        <div className="mt-3 h-14 animate-pulse rounded-xl bg-pale-green/40" />
+      ) : events.length === 0 ? (
+        <p className="mt-3 rounded-xl border border-dashed border-soft-sage px-4 py-4 text-center text-sm text-muted">다가오는 프로젝트 이벤트가 없어요.</p>
+      ) : (
+        <ul className="mt-3 grid gap-x-6 md:grid-cols-2">
+          {events.map((e) => (
+            <li key={e.id}><EventRow event={e} today={today} showProject onOpen={() => setDialog({ mode: "edit", event: e })} /></li>
+          ))}
+        </ul>
+      )}
+      {dialog?.mode === "create" && <EventDialog mode="create" date={today} onClose={() => setDialog(null)} />}
+      {dialog?.mode === "edit" && <EventDialog mode="edit" event={dialog.event} onClose={() => setDialog(null)} />}
+    </section>
   );
 }
