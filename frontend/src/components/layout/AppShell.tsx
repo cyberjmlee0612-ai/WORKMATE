@@ -11,6 +11,7 @@ import {
   FolderKanban, Home, ListTodo, MoreHorizontal, Settings2, Sparkles,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { TimerBar } from "@/components/time/TimerBar";
 
 type NavItem = { label: string; icon: LucideIcon; href?: string; ai?: boolean };
 
@@ -75,7 +76,10 @@ export function AppShell({ children }: { children: ReactNode }) {
       </aside>
 
       <main className={`min-w-0 px-4 pb-32 pt-7 md:ml-20 md:px-6 md:pb-12 md:pt-9 lg:pt-10 lg:transition-[margin] lg:duration-200 xl:px-10 ${sidebarCollapsed ? "lg:ml-20" : "lg:ml-64"}`}>
-        <div className="mx-auto max-w-7xl">{children}</div>
+        <div className="mx-auto max-w-7xl">
+          <TimerBar />
+          {children}
+        </div>
       </main>
 
       <nav className="glass-panel fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-border px-2 pb-[env(safe-area-inset-bottom)] pt-2 md:hidden" aria-label="모바일 메뉴">

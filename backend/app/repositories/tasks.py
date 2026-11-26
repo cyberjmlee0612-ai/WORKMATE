@@ -7,6 +7,7 @@ from psycopg import Connection, sql
 from psycopg.rows import DictRow
 
 from app.core.errors import FieldError
+from app.repositories import time_entries as time_repo
 from app.schemas.task import TaskCreate, TaskScope, TaskUpdate
 
 LIST_LIMIT = 500  # 페이지 나누기를 도입하기 전 안전장치
@@ -14,7 +15,13 @@ LIST_LIMIT = 500  # 페이지 나누기를 도입하기 전 안전장치
 _SELECT = """
 select
   t.id, t.project_id, p.name as project_name, t.title, t.description, t.status, t.priority,
-  t.due_date, t.estimated_minutes, t.completed_at, t.cancelled_at, t.cancel_reason, t.created_at, t.updated_at
+  t.due_date, t.estimated_minutes, t.completed_at, t.cancelled_at, t.cancel_reason, t.created_at, t.updated_at,
+  -- 실제 기록 시간 합계(끝난 기록만, 분 단위 내림). 진행 중인 타이머는 화면에서 따로 더한다.
+  coalesce((
+    select floor(sum(extract(epoch from e.ended_at - e.started_at)) / 60)::int
+    from public.task_time_entries e
+    where e.task_id = t.id and e.user_id = t.user_id and e.ended_at is not null
+  ), 0) as tracked_minutes
 from public.tasks t
 left join public.projects p on p.id = t.project_id and p.user_id = t.user_id
 """
@@ -110,6 +117,9 @@ def update_task(db: Connection[DictRow], user_id: UUID, task_id: UUID, data: Tas
         return None
     if changes.get("project_id") is not None:
         _ensure_own_project(db, user_id, changes["project_id"])
+    if changes.get("status") in time_repo.CLOSED_TASK_STATUSES:
+        # 완료·제외하면 그 업무의 타이머를 멈춘다 (기록은 남는다)
+        time_repo.stop_for_task(db, user_id, task_id)
 
     if changes:
         assignments = sql.SQL(", ").join(

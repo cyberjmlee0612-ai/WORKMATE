@@ -44,6 +44,8 @@ export type Task = {
   completed_at: string | null;
   cancelled_at: string | null;
   cancel_reason: string | null;
+  /** 실제 기록 시간 합계(분, 끝난 기록만). 진행 중인 타이머는 포함하지 않는다. */
+  tracked_minutes: number;
   created_at: string;
   updated_at: string;
 };

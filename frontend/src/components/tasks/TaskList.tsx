@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { Ban, CircleAlert, Clock, FolderKanban, Pencil, Trash2, UserRound } from "lucide-react";
+import { Ban, CircleAlert, Clock, FolderKanban, History, Info, Pencil, Trash2, UserRound } from "lucide-react";
+import { TaskTimerButton } from "@/components/time/TaskTimerButton";
+import { TimeEntriesDialog } from "@/components/time/TimeEntriesDialog";
 import type { Task } from "@/lib/api/tasks";
 import { formatMinutes } from "@/lib/format";
 import { useToday } from "@/lib/date";
@@ -26,6 +28,7 @@ export function TaskList({ tasks, showProject = true, empty }: Props) {
   const [editing, setEditing] = useState<Task | null>(null);
   const [deleting, setDeleting] = useState<Task | null>(null);
   const [cancelling, setCancelling] = useState<Task | null>(null);
+  const [timing, setTiming] = useState<Task | null>(null);
   const today = useToday();
 
   if (tasks.length === 0) return <>{empty}</>;
@@ -42,9 +45,11 @@ export function TaskList({ tasks, showProject = true, empty }: Props) {
             onEdit={() => setEditing(task)}
             onDelete={() => setDeleting(task)}
             onCancel={() => setCancelling(task)}
+            onOpenTime={() => setTiming(task)}
           />
         ))}
       </ul>
+      {timing && <TimeEntriesDialog task={timing} onClose={() => setTiming(null)} />}
       {editing && <TaskFormDialog task={editing} onClose={() => setEditing(null)} />}
       {deleting && <DeleteTaskDialog task={deleting} onClose={() => setDeleting(null)} />}
       {cancelling && <CancelTaskDialog task={cancelling} onClose={() => setCancelling(null)} />}
@@ -59,14 +64,22 @@ type RowProps = {
   onEdit: () => void;
   onDelete: () => void;
   onCancel: () => void;
+  onOpenTime: () => void;
 };
 
-function TaskRow({ task, today, showProject, onEdit, onDelete, onCancel }: RowProps) {
+function TaskRow({ task, today, showProject, onEdit, onDelete, onCancel, onOpenTime }: RowProps) {
   const done = task.status === "completed";
   const cancelled = task.status === "cancelled";
   const minutes = formatMinutes(task.estimated_minutes);
-  // 체크박스·상태 메뉴의 저장 실패 메시지 (행 안에 표시)
+  const tracked = formatMinutes(task.tracked_minutes);
+  // 체크박스·상태 메뉴·타이머의 저장 실패 메시지와 결과 안내 (행 안에 표시)
   const [rowError, setRowError] = useState<string | null>(null);
+  const [rowNotice, setRowNotice] = useState<string | null>(null);
+  useEffect(() => {
+    if (!rowNotice) return;
+    const id = window.setTimeout(() => setRowNotice(null), 5000);
+    return () => window.clearTimeout(id);
+  }, [rowNotice]);
 
   return (
     <li className={`flex min-w-0 items-start gap-2 py-4 md:gap-3 ${cancelled ? "opacity-75" : ""}`}>
@@ -110,6 +123,11 @@ function TaskRow({ task, today, showProject, onEdit, onDelete, onCancel }: RowPr
               예상 {minutes}
             </span>
           )}
+          {/* 실제 기록 시간. 누르면 기록 목록·직접 입력 창이 열린다 */}
+          <button type="button" onClick={onOpenTime} className="inline-flex min-h-6 items-center gap-1 rounded hover:text-primary-dark hover:underline">
+            <History size={14} strokeWidth={2} aria-hidden="true" />
+            {tracked ? `기록 ${tracked}` : "시간 기록"}
+          </button>
         </div>
         {rowError && (
           <p className="mt-2 flex items-center gap-1 text-xs text-red-700" role="alert">
@@ -117,8 +135,15 @@ function TaskRow({ task, today, showProject, onEdit, onDelete, onCancel }: RowPr
             {rowError}
           </p>
         )}
+        {rowNotice && !rowError && (
+          <p className="mt-2 flex items-center gap-1 text-xs text-primary-dark" role="status">
+            <Info size={14} strokeWidth={2} aria-hidden="true" />
+            {rowNotice}
+          </p>
+        )}
       </div>
       <div className="flex shrink-0 items-center gap-1">
+        <TaskTimerButton task={task} onError={setRowError} onNotice={setRowNotice} />
         <button type="button" onClick={onEdit} className="flex size-11 items-center justify-center rounded-xl text-muted hover:bg-pale-green hover:text-primary-dark" aria-label={`${task.title} 수정`} title="수정">
           <Pencil size={18} strokeWidth={2} aria-hidden="true" />
         </button>

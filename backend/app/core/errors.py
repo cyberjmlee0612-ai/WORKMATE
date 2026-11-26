@@ -7,6 +7,7 @@
 from typing import Any
 
 from fastapi import FastAPI, Request, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from psycopg import errors as pg_errors
@@ -21,6 +22,20 @@ class FieldError(Exception):
         super().__init__(message)
         self.field = field
         self.message = message
+
+
+class ConflictError(Exception):
+    """현재 데이터 상태 때문에 처리할 수 없을 때(409). {"detail", "code", ...extra} 형식으로 응답한다.
+
+    엔드포인트에서 JSONResponse를 직접 돌려주면 요청 트랜잭션이 커밋되지만,
+    예외로 던지면 트랜잭션이 롤백되므로 중간에 쓴 내용이 남지 않는다.
+    """
+
+    def __init__(self, message: str, code: str, **extra: Any) -> None:
+        super().__init__(message)
+        self.message = message
+        self.code = code
+        self.extra = extra
 
 
 _TYPE_MESSAGES = {
@@ -82,8 +97,26 @@ async def _foreign_key_handler(_: Request, exc: pg_errors.ForeignKeyViolation) -
     )
 
 
+async def _conflict_handler(_: Request, exc: ConflictError) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content=jsonable_encoder({"detail": exc.message, "code": exc.code, **exc.extra}),
+    )
+
+
+async def _concurrent_change_handler(_: Request, exc: pg_errors.Error) -> JSONResponse:
+    # 앱 검사 직후 다른 탭·기기에서 기록이 생겨 유일성·겹침 제약에 걸린 경우 (최후 방어선)
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content={"detail": "다른 곳에서 기록이 바뀌었습니다. 새로고침한 뒤 다시 시도해 주세요.", "code": "concurrent_change"},
+    )
+
+
 def register_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(RequestValidationError, _validation_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(ConflictError, _conflict_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(pg_errors.UniqueViolation, _concurrent_change_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(pg_errors.ExclusionViolation, _concurrent_change_handler)  # type: ignore[arg-type]
     app.add_exception_handler(pg_errors.CheckViolation, _check_violation_handler)  # type: ignore[arg-type]
     app.add_exception_handler(FieldError, _field_error_handler)  # type: ignore[arg-type]
     app.add_exception_handler(pg_errors.ForeignKeyViolation, _foreign_key_handler)  # type: ignore[arg-type]

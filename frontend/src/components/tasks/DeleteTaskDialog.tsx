@@ -6,6 +6,7 @@ import { CircleAlert, LoaderCircle, Trash2 } from "lucide-react";
 import { ApiError } from "@/lib/api/client";
 import { invalidateWorkData } from "@/lib/api/invalidate";
 import { deleteTask, type Task } from "@/lib/api/tasks";
+import { formatMinutes } from "@/lib/format";
 
 /** 열 때마다 새로 마운트해서 사용한다: `{target && <DeleteTaskDialog task={target} … />}` */
 export function DeleteTaskDialog({ task, onClose }: { task: Task; onClose: () => void }) {
@@ -60,6 +61,7 @@ export function DeleteTaskDialog({ task, onClose }: { task: Task; onClose: () =>
       <h2 id={`${id}-title`} className="mt-4 text-lg font-bold text-primary-dark">업무를 삭제할까요?</h2>
       <p id={`${id}-desc`} className="mt-2 text-sm leading-6 text-muted">
         <strong className="break-words font-semibold text-foreground">“{task.title}”</strong> 업무를 삭제합니다. 삭제한 업무는 되돌릴 수 없습니다.
+        {task.tracked_minutes > 0 && <> 이 업무의 시간 기록({formatMinutes(task.tracked_minutes)})도 함께 삭제됩니다.</>}
       </p>
 
       {mutation.isError && (
