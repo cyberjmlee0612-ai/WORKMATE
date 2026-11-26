@@ -8,7 +8,7 @@ GET  /checkins/{day}/placement     꼭 할 일을 시간표 빈칸에 넣는 제
 day는 사용자 시간대의 달력 날짜. 완료 체크는 기존 업무 API로 한다.
 """
 
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any, Literal
 from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -18,11 +18,10 @@ from psycopg import Connection
 from psycopg.rows import DictRow
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.ai.day_plan import _busy_intervals
-from app.api.schedule import blocks_for_weekday, list_blocks, to_minutes
 from app.core.auth import CurrentUserDep
 from app.core.errors import FieldError
 from app.db import UserDbDep
+from app.repositories import slots
 from app.repositories import tasks as task_repo
 from app.schemas.task import TaskOut
 
@@ -32,12 +31,10 @@ MAX_FOCUS = 3
 SUGGESTION_LIMIT = 8
 RETRY_LOOKBACK_DAYS = 7
 NOTE_MAX = 500
-SNAP = 10
-BUFFER = 10  # 자동 배치 블록 사이 여유
+SNAP = slots.SNAP
+BUFFER = slots.BUFFER
 DEFAULT_MINUTES = 60
 MAX_BLOCK_MINUTES = 180
-DEFAULT_WINDOWS = [(9 * 60, 18 * 60)]
-DEFAULT_BLOCKED = [(12 * 60, 13 * 60)]
 
 
 # ---------------------------------------------------------------- 스키마
@@ -254,20 +251,7 @@ def post_review(day: date, body: ReviewIn, user: CurrentUserDep, db: UserDbDep) 
 # ---------------------------------------------------------------- 시간표 빈칸 배치 (선택)
 
 
-def _free_gaps(windows: list[tuple[int, int]], taken: list[tuple[int, int]], not_before: int) -> list[tuple[int, int]]:
-    """일할 시간 구간에서 차지된 시간을 뺀 빈칸 (시작 순)."""
-    gaps: list[tuple[int, int]] = []
-    for w0, w1 in sorted(windows):
-        cursor = max(w0, not_before)
-        for t0, t1 in sorted(taken):
-            if t1 <= cursor or t0 >= w1:
-                continue
-            if t0 > cursor:
-                gaps.append((cursor, min(t0, w1)))
-            cursor = max(cursor, t1)
-        if cursor < w1:
-            gaps.append((cursor, w1))
-    return [(a, b) for a, b in gaps if b - a >= SNAP]
+_free_gaps = slots.free_gaps
 
 
 def place(tasks: list[dict[str, Any]], windows: list[tuple[int, int]], taken: list[tuple[int, int]], not_before: int) -> tuple[list[tuple[dict, int, int]], list[dict]]:
@@ -292,37 +276,25 @@ def place(tasks: list[dict[str, Any]], windows: list[tuple[int, int]], taken: li
 @router.get("/{day}/placement", response_model=PlacementOut)
 def get_placement(day: date, user: CurrentUserDep, db: UserDbDep, tz: str = Query("UTC", max_length=64)) -> dict:
     try:
-        zone = ZoneInfo(tz)
+        ZoneInfo(tz)
     except (ZoneInfoNotFoundError, ValueError) as exc:
         raise FieldError("tz", "알 수 없는 시간대입니다.") from exc
-    day_start = datetime.combine(day, time(0), tzinfo=zone)
-    day_end = datetime.combine(day + timedelta(days=1), time(0), tzinfo=zone)
-
-    if list_blocks(db, user.id):
-        blocks = blocks_for_weekday(db, user.id, (day.weekday() + 1) % 7)
-        windows = [(to_minutes(b["start"]), to_minutes(b["end"])) for b in blocks if b["kind"] == "work"]
-        blocked = [(to_minutes(b["start"]), to_minutes(b["end"])) for b in blocks if b["kind"] != "work"]
-    else:
-        windows, blocked = list(DEFAULT_WINDOWS), list(DEFAULT_BLOCKED)
-
-    busy = [(a, b) for a, b, _ in _busy_intervals(db, user.id, day_start, day_end)]
-    now = datetime.now(zone)
-    not_before = 0
-    if now.date() == day:
-        not_before = -(-(now.hour * 60 + now.minute) // SNAP) * SNAP
-    elif day < now.date():
-        not_before = 24 * 60  # 지난 날짜에는 넣지 않는다
+    day_start, day_end = slots.day_bounds(day, tz)
+    windows, _ = slots.day_ranges(db, user.id, day)
+    taken = slots.taken_ranges(db, user.id, day, tz)
+    not_before = slots.not_before_minute(day, tz)
 
     # 그날 이미 계획이 있는 업무는 빼고, 완료한 업무도 뺀다
     planned_ids = {
         r["task_id"]
         for r in db.execute(
-            "select distinct task_id from public.task_time_plans where user_id = %s and starts_at < %s and ends_at > %s",
+            """select distinct task_id from public.task_time_plans
+               where user_id = %s and starts_at < %s and ends_at > %s and (resolution is null or resolution = 'done')""",
             (user.id, day_end, day_start),
         ).fetchall()
     }
     tasks = [f["task"] for f in _focus_rows(db, user.id, day) if f["task"]["status"] != "completed" and f["task"]["id"] not in planned_ids]
-    placed, unplaced = place(tasks, windows, blocked + busy, not_before)
+    placed, unplaced = place(tasks, windows, taken, not_before)
     return {
         "blocks": [
             {"task_id": t["id"], "task_title": t["title"], "starts_at": day_start + timedelta(minutes=a), "ends_at": day_start + timedelta(minutes=b)}

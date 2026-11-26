@@ -47,3 +47,6 @@ class TimePlanOut(BaseModel):
     ends_at: datetime
     created_at: datetime
     updated_at: datetime
+    # 밀린 계획 처리 결과: rescheduled(다시 배치함, 원래 블록은 '놓침') / done(기록으로 바꿈) / let_go(놓아줌)
+    resolution: str | None = None
+    missed: bool = False  # 끝났는데 거의 기록하지 않은 계획 (최근 7일, 미처리)

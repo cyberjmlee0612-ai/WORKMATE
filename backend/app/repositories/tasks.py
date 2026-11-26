@@ -26,7 +26,7 @@ select
   coalesce((
     select floor(sum(extract(epoch from pl.ends_at - pl.starts_at)) / 60)::int
     from public.task_time_plans pl
-    where pl.task_id = t.id and pl.user_id = t.user_id
+    where pl.task_id = t.id and pl.user_id = t.user_id and (pl.resolution is null or pl.resolution = 'done')
   ), 0) as planned_minutes,
   -- "상위 › 하위" 경로 (최대 3단계)
   nullif(concat_ws(' › ', gp.name, pp.name, p.name), '') as project_path

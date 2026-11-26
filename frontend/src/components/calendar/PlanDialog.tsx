@@ -3,6 +3,8 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CalendarClock, CircleAlert, LoaderCircle, Play, Square, Trash2, X } from "lucide-react";
+import { TimeSelect } from "@/components/common/TimeSelect";
+import { ResolvePlanActions } from "@/components/time/ResolvePlanActions";
 import { useTimerControls } from "@/components/time/useTimerControls";
 import { ApiError } from "@/lib/api/client";
 import { invalidateWorkData } from "@/lib/api/invalidate";
@@ -156,21 +158,29 @@ export function PlanDialog(props: Props) {
         </div>
         <h2 id={`${id}-title`} className="mt-3 text-lg font-bold text-primary-dark">{props.mode === "edit" ? "계획 수정" : "계획 배치"}</h2>
         <p className="mt-1 break-words text-sm font-medium text-foreground">“{title}”</p>
+        {props.mode === "edit" && props.plan.missed && (
+          <div className="mt-3 rounded-xl border border-red-200 bg-red-50/70 px-3 py-2.5">
+            <p className="text-sm font-semibold text-red-900">밀린 계획이에요. 어떻게 할까요?</p>
+            <p className="text-xs text-red-800">다시 배치하면 이 블록은 &lsquo;놓침&rsquo;으로 남아요.</p>
+            <ResolvePlanActions plan={props.plan} onDone={() => onClose()} />
+          </div>
+        )}
         {props.mode === "edit" && <PlanTimer plan={props.plan} />}
 
-        <fieldset disabled={pending} className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <label className="col-span-2 block text-sm font-medium sm:col-span-1">
+        <fieldset disabled={pending} className="mt-4 flex flex-wrap items-end gap-3">
+          <label className="block w-full text-sm font-medium">
             날짜
             <input type="date" value={fields.date} onChange={(e) => setFields((f) => ({ ...f, date: e.target.value }))} className={inputClass(Boolean(errors.starts_at))} />
           </label>
-          <label className="block text-sm font-medium">
+          {/* 브라우저 기본 시각 칸 대신 시·분(10분 단위) 선택 (12시 선택 문제, 2026-11-26) */}
+          <div className="block text-sm font-medium">
             시작
-            <input type="time" step={SNAP_MIN * 60} value={fields.start} onChange={(e) => setFields((f) => ({ ...f, start: e.target.value }))} className={inputClass(Boolean(errors.starts_at))} aria-invalid={Boolean(errors.starts_at) || undefined} />
-          </label>
-          <label className="block text-sm font-medium">
+            <TimeSelect label="시작" value={fields.start} onChange={(v) => setFields((f) => ({ ...f, start: v }))} invalid={Boolean(errors.starts_at)} className="mt-1.5" />
+          </div>
+          <div className="block text-sm font-medium">
             끝
-            <input type="time" step={SNAP_MIN * 60} value={fields.end} onChange={(e) => setFields((f) => ({ ...f, end: e.target.value }))} className={inputClass(Boolean(errors.ends_at))} aria-invalid={Boolean(errors.ends_at) || undefined} />
-          </label>
+            <TimeSelect label="끝" value={fields.end} onChange={(v) => setFields((f) => ({ ...f, end: v }))} invalid={Boolean(errors.ends_at)} className="mt-1.5" />
+          </div>
         </fieldset>
         <div className="mt-1.5 space-y-1 text-xs">
           {errors.starts_at && <p className="text-red-700" role="alert">{errors.starts_at}</p>}

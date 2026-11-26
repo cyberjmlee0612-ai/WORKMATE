@@ -164,12 +164,19 @@ export function TimeGrid({
                   {planPos.map(({ item: plan, top, height, lane, lanes, cluster, cutTop, cutBottom }) => {
                     const width = (narrowClusters.has(cluster) ? PLAN_WIDTH : 100) / lanes;
                     const closed = plan.task_status === "completed" || plan.task_status === "cancelled";
+                    // 밀린 계획: 빨간 점선 / 다시 배치했거나 놓아준 원래 블록: 흐린 '놓침' (2026-11-26 사용자 확정)
+                    const skipped = plan.resolution === "rescheduled" || plan.resolution === "let_go";
+                    const tone = plan.missed
+                      ? "border-red-400 bg-red-50/85 text-red-900 hover:bg-red-50"
+                      : skipped
+                        ? "border-muted/40 bg-background/80 text-muted opacity-60 hover:opacity-90"
+                        : "border-primary/70 bg-pale-green/70 text-primary-dark hover:bg-pale-green";
                     return (
                       <div
                         key={plan.id}
                         role="button"
                         tabIndex={0}
-                        aria-label={`계획: ${plan.task_title}, ${formatClock(plan.starts_at)}부터 ${formatClock(plan.ends_at)}까지`}
+                        aria-label={`${plan.missed ? "밀린 " : skipped ? "놓친 " : ""}계획: ${plan.task_title}, ${formatClock(plan.starts_at)}부터 ${formatClock(plan.ends_at)}까지`}
                         onClick={(event) => {
                           event.stopPropagation();
                           onPlanOpen(plan);
@@ -183,10 +190,16 @@ export function TimeGrid({
                         onPointerDown={(event) => {
                           if (event.pointerType === "mouse" && event.button === 0) onPlanPointerDown(plan, "move", event);
                         }}
-                        className={`group absolute z-[1] overflow-hidden border-2 border-dashed border-primary/70 bg-pale-green/70 px-1.5 text-left text-primary-dark hover:z-[3] hover:bg-pale-green focus-visible:z-[3] focus-visible:outline-2 focus-visible:outline-primary md:cursor-move ${cutTop ? "rounded-t-none border-t-0" : "rounded-t-lg"} ${cutBottom ? "rounded-b-none border-b-0" : "rounded-b-lg"} ${closed ? "opacity-60" : ""}`}
+                        className={`group absolute z-[1] overflow-hidden border-2 border-dashed px-1.5 text-left hover:z-[3] focus-visible:z-[3] ${tone} focus-visible:outline-2 focus-visible:outline-primary md:cursor-move ${cutTop ? "rounded-t-none border-t-0" : "rounded-t-lg"} ${cutBottom ? "rounded-b-none border-b-0" : "rounded-b-lg"} ${closed ? "opacity-60" : ""}`}
                         style={{ top, height: Math.max(height, 10), left: `calc(${lane * width}% + 2px)`, width: `calc(${width}% - 4px)` }}
                       >
-                        {height >= 18 && <p className={`truncate text-[11px] font-semibold leading-4 ${closed ? "line-through" : ""}`}>{plan.task_title}</p>}
+                        {height >= 18 && (
+                          <p className={`truncate text-[11px] font-semibold leading-4 ${closed || skipped ? "line-through" : ""}`}>
+                            {plan.missed && <span className="mr-1 rounded bg-red-600 px-1 text-[9px] font-bold text-white no-underline">밀림</span>}
+                            {skipped && <span className="mr-1 text-[9px] font-bold no-underline">놓침</span>}
+                            {plan.task_title}
+                          </p>
+                        )}
                         {height >= 34 && <p className="truncate text-[10px] leading-4 text-muted">{formatClock(plan.starts_at)} – {formatClock(plan.ends_at)}</p>}
                         {/* 아래 끝을 끌어 길이 조절 (10분 단위). 터치에서도 동작한다 */}
                         {!cutBottom && (

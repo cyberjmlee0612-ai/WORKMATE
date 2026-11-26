@@ -76,7 +76,8 @@ def _busy_intervals(db: Connection[DictRow], user_id: UUID, day_start: datetime,
     """그날 이미 있는 계획·실제 기록을 그날 0시부터의 분으로 (진행 중 타이머는 지금까지)."""
     now = entry_repo.now(db)
     out: list[tuple[int, int, str]] = []
-    rows = [(p["starts_at"], p["ends_at"], f"{p['task_title']} (계획)") for p in plan_repo.list_plans(db, user_id, start=day_start, end=day_end)]
+    plans = [p for p in plan_repo.list_plans(db, user_id, start=day_start, end=day_end) if p["resolution"] in (None, "done")]
+    rows = [(p["starts_at"], p["ends_at"], f"{p['task_title']} (계획)") for p in plans]
     rows += [(e["started_at"], e["ended_at"] or now, f"{e['task_title']} (실제)") for e in entry_repo.list_entries(db, user_id, start=day_start, end=day_end)]
     for s, e, label in rows:
         a = max(0, int((s - day_start).total_seconds() // 60))

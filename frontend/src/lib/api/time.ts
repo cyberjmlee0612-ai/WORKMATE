@@ -42,7 +42,19 @@ export type TimePlan = {
   ends_at: string;
   created_at: string;
   updated_at: string;
+  /** 밀린 계획 처리 결과: rescheduled(다시 배치함 → 이 블록은 '놓침') / done(기록으로 바꿈) / let_go(놓아줌) */
+  resolution: "rescheduled" | "done" | "let_go" | null;
+  /** 끝났는데 거의 기록하지 않은 계획 (최근 7일, 미처리, 업무 미완료) */
+  missed: boolean;
 };
+
+export type ResolveAction = "today" | "tomorrow" | "done" | "let_go";
+export const listMissedPlans = () => apiFetch<TimePlan[]>("/time-plans/missed");
+export const resolvePlan = (id: string, action: ResolveAction, tz: string) =>
+  apiFetch<{ plan: TimePlan; new_plan: TimePlan | null }>(`/time-plans/${encodeURIComponent(id)}/resolve`, {
+    method: "POST",
+    body: JSON.stringify({ action, tz }),
+  });
 
 export type TimeRange = { start: string; end: string };
 
@@ -51,6 +63,7 @@ export const timeKeys = {
   timer: () => [...timeKeys.all, "timer"] as const,
   entries: (filters: TimeEntryFilters) => [...timeKeys.all, "entries", filters] as const,
   plans: (range: TimeRange) => [...timeKeys.all, "plans", range] as const,
+  missed: () => [...timeKeys.all, "missed"] as const,
 };
 
 /** 날짜별 메모 (시간표 일간 보기). 업무 데이터와 무관하므로 invalidateWorkData 대상(timeKeys)과 분리한다. */
