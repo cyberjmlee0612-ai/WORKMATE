@@ -4,6 +4,7 @@ from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Response, status
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.auth import CurrentUserDep
 from app.core.errors import FieldError
@@ -32,6 +33,18 @@ def list_plans(start: datetime, end: datetime, user: CurrentUserDep, db: UserDbD
 @router.post("", response_model=TimePlanOut, status_code=status.HTTP_201_CREATED)
 def create_plan(body: TimePlanCreate, user: CurrentUserDep, db: UserDbDep) -> dict:
     return repo.create_plan(db, user.id, body)
+
+
+class TimePlanBulkCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    plans: list[TimePlanCreate] = Field(min_length=1, max_length=30)
+
+
+@router.post("/bulk", response_model=list[TimePlanOut], status_code=status.HTTP_201_CREATED)
+def create_plans_bulk(body: TimePlanBulkCreate, user: CurrentUserDep, db: UserDbDep) -> list[dict]:
+    """여러 계획을 한 번에 저장 (AI 하루 계획 승인용). 하나라도 실패하면 아무것도 저장하지 않는다."""
+    return [repo.create_plan(db, user.id, plan) for plan in body.plans]
 
 
 @router.patch("/{plan_id}", response_model=TimePlanOut)

@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, CircleAlert, Clock, ListTodo, MousePointerClick, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, CircleAlert, Clock, ListTodo, MousePointerClick, Sparkles, X } from "lucide-react";
+import { DayPlanPanel } from "./DayPlanPanel";
 import { ApiError } from "@/lib/api/client";
 import { invalidateWorkData } from "@/lib/api/invalidate";
 import type { Task } from "@/lib/api/tasks";
@@ -65,6 +66,9 @@ function CalendarBody({ view, anchor }: { view: View; anchor: Date }) {
 
   const first = view === "week" ? startOfWeek(anchor) : startOfDay(anchor);
   const days = Array.from({ length: view === "week" ? 7 : 1 }, (_, i) => addDays(first, i));
+  // AI 하루 계획의 기본 날짜: 일간이면 그날, 주간이면 이번 주에 오늘이 있으면 오늘, 아니면 그 주 첫날
+  const todayStart = startOfDay(new Date());
+  const defaultPlanDay = view === "day" ? days[0] : days.some((d) => d.getTime() === todayStart.getTime()) ? todayStart : days[0];
   const range = { start: days[0].toISOString(), end: addDays(days[days.length - 1], 1).toISOString() };
 
   const plansQuery = useQuery({ queryKey: timeKeys.plans(range), queryFn: () => listTimePlans(range) });
@@ -81,6 +85,10 @@ function CalendarBody({ view, anchor }: { view: View; anchor: Date }) {
   >(null);
   const [entryDialog, setEntryDialog] = useState<TimeEntry | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  // AI 하루 계획 (2026-11-26): 옆 패널 + 시간표 미리보기
+  const [dayPlanOpen, setDayPlanOpen] = useState(false);
+  const [previews, setPreviews] = useState<Ghost[]>([]);
+  const [planNotice, setPlanNotice] = useState<string | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -314,12 +322,30 @@ function CalendarBody({ view, anchor }: { view: View; anchor: Date }) {
             <ListTodo size={18} strokeWidth={2} aria-hidden="true" />
             업무 배치
           </button>
+          <button
+            type="button"
+            onClick={() => {
+              setPlanNotice(null);
+              setDayPlanOpen(true);
+            }}
+            className="liquid-accent flex min-h-11 items-center gap-2 rounded-xl border border-violet-300 px-3.5 text-sm font-semibold text-violet-900 hover:bg-violet-50"
+          >
+            <Sparkles size={18} strokeWidth={2} aria-hidden="true" />
+            AI 하루 계획
+          </button>
         </div>
       </div>
+      {planNotice && (
+        <p className="mt-3 flex items-start gap-2 rounded-xl border border-soft-sage bg-pale-green/60 px-3.5 py-3 text-sm text-primary-dark" role="status">
+          <Sparkles size={16} strokeWidth={2} className="mt-0.5 shrink-0" aria-hidden="true" />
+          {planNotice}
+        </p>
+      )}
 
       <p className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
         <span className="inline-flex items-center gap-1.5"><span className="size-3 rounded border-2 border-dashed border-primary/70 bg-pale-green" aria-hidden="true" />계획</span>
         <span className="inline-flex items-center gap-1.5"><span className="size-3 rounded bg-primary" aria-hidden="true" />실제 기록</span>
+        {previews.length > 0 && <span className="inline-flex items-center gap-1.5"><span className="size-3 rounded border-2 border-dashed border-violet-500 bg-violet-100" aria-hidden="true" />AI 제안(저장 전)</span>}
         <span>날짜 아래 숫자: 계획 / 실제 합계</span>
       </p>
 
@@ -370,6 +396,7 @@ function CalendarBody({ view, anchor }: { view: View; anchor: Date }) {
             entries={entriesQuery.data ?? []}
             nowMinute={nowMinute}
             ghost={ghost}
+            previews={previews}
             hiddenPlanId={hiddenPlanId}
             placing={selected !== null}
             dragging={dragging}
@@ -401,6 +428,18 @@ function CalendarBody({ view, anchor }: { view: View; anchor: Date }) {
         <PlanDialog mode="create" task={planDialog.task} start={planDialog.start} minutes={planDialog.minutes} onClose={() => setPlanDialog(null)} />
       )}
       {entryDialog && <EntryEditDialog entry={entryDialog} onClose={() => setEntryDialog(null)} />}
+      {dayPlanOpen && (
+        <DayPlanPanel
+          initialDate={defaultPlanDay}
+          onPreview={setPreviews}
+          onDateChange={(d) => navigate({ date: d })}
+          onDone={(message) => {
+            setPlanNotice(message);
+            setDayPlanOpen(false);
+          }}
+          onClose={() => setDayPlanOpen(false)}
+        />
+      )}
     </>
   );
 }

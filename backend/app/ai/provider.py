@@ -6,9 +6,11 @@
 """
 
 from functools import lru_cache
-from typing import Literal, Protocol
+from typing import Literal, Protocol, TypeVar
 
 from pydantic import BaseModel, Field, ValidationError
+
+T = TypeVar("T", bound=BaseModel)
 
 from app.core.config import get_settings
 
@@ -48,6 +50,8 @@ class BreakdownProvider(Protocol):
 
     def breakdown(self, system: str, prompt: str) -> AiBreakdown: ...
 
+    def generate(self, system: str, prompt: str, schema: type[T]) -> T: ...
+
 
 _TRANSIENT = {500, 502, 503, 504}  # Google 쪽 일시 과부하·시간 초과 → 잠시 뒤 다시 시도
 RETRY_DELAY_SECONDS = 1.5
@@ -71,18 +75,22 @@ class GeminiProvider:
         self._budget = timeout_seconds
         self._client = genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=timeout_seconds * 1000))
 
-    def _generate(self, model: str, system: str, prompt: str):
+    def _generate(self, model: str, system: str, prompt: str, schema: type[BaseModel] = AiBreakdown):
         return self._client.models.generate_content(
             model=model,
             contents=prompt,
             config=self._types.GenerateContentConfig(
                 system_instruction=system,
                 response_mime_type="application/json",
-                response_json_schema=AiBreakdown.model_json_schema(),
+                response_json_schema=schema.model_json_schema(),
             ),
         )
 
     def breakdown(self, system: str, prompt: str) -> AiBreakdown:
+        return self.generate(system, prompt, AiBreakdown)
+
+    def generate(self, system: str, prompt: str, schema: type[T]) -> T:
+        """정해진 JSON 형식(schema)의 답을 받는다. 업무 분해·하루 계획이 함께 쓴다."""
         import time
 
         from google.genai import errors
@@ -95,7 +103,7 @@ class GeminiProvider:
                 if time.monotonic() - started > self._budget:
                     break
                 try:
-                    response = self._generate(model, system, prompt)
+                    response = self._generate(model, system, prompt, schema)
                     break
                 except errors.APIError as exc:
                     last = exc
@@ -125,7 +133,7 @@ class GeminiProvider:
         if not text:
             raise AiProviderError("AI가 답을 만들지 못했어요. 표현을 바꿔 다시 시도해 주세요.")
         try:
-            return AiBreakdown.model_validate_json(text)
+            return schema.model_validate_json(text)
         except ValidationError as exc:
             raise AiProviderError("AI 답변 형식이 올바르지 않아요. 다시 시도해 주세요.") from exc
 

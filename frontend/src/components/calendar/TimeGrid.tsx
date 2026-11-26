@@ -17,6 +17,8 @@ type Props = {
   /** epoch 분. 진행 중인 타이머 블록 끝과 현재 시각 선에 쓴다 */
   nowMinute: number | null;
   ghost: Ghost | null;
+  /** AI 하루 계획 미리보기 (저장 전) */
+  previews?: Ghost[];
   /** 끌어서 옮기는 중인 계획은 원래 자리에서 숨긴다 */
   hiddenPlanId: string | null;
   placing: boolean;
@@ -42,7 +44,7 @@ function overlapMinutes(s: number, e: number, dayStart: number, dayEnd: number) 
 
 /** 0~24시 시간표. 1분 = 1px. 시각 계산은 브라우저 시간대 기준. 끌기 처리는 CalendarView가 맡는다. */
 export function TimeGrid({
-  days, plans, entries, nowMinute, ghost, hiddenPlanId, placing, dragging,
+  days, plans, entries, nowMinute, ghost, previews = [], hiddenPlanId, placing, dragging,
   scrollRef, contentRef, onContentClick, onPlanPointerDown, onPlanOpen, onEntryOpen,
 }: Props) {
   const todayKey = nowMinute === null ? null : toLocalDateString(new Date(nowMinute * 60_000));
@@ -180,6 +182,19 @@ export function TimeGrid({
                     </button>
                     );
                   })}
+
+                  {/* AI 하루 계획 미리보기: 아직 저장 전이라 누를 수 없다 */}
+                  {layoutDay(previews, (g) => [g.startMs, g.endMs], dayStart, dayEnd).map(({ item, top, height }) => (
+                    <div
+                      key={`preview-${item.startMs}-${item.label}`}
+                      aria-hidden="true"
+                      className="pointer-events-none absolute z-[3] overflow-hidden rounded-lg border-2 border-dashed border-violet-500 bg-violet-100/80 px-1.5 text-violet-900"
+                      style={{ top, height: Math.max(height, 10), left: 2, width: "calc(100% - 4px)" }}
+                    >
+                      {height >= 18 && <p className="truncate text-[11px] font-semibold leading-4">{item.label}</p>}
+                      {height >= 34 && <p className="truncate text-[10px] leading-4">{formatClock(new Date(item.startMs).toISOString())} – {formatClock(new Date(item.endMs).toISOString())}</p>}
+                    </div>
+                  ))}
 
                   {/* 자석처럼 붙은 경계 안내선 */}
                   {guideTop !== null && (

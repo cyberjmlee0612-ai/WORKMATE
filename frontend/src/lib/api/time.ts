@@ -64,6 +64,9 @@ export const saveDailyNote = (date: string, content: string) =>
 export const listTimePlans = (range: TimeRange) => apiFetch<TimePlan[]>(`/time-plans?${new URLSearchParams(range).toString()}`);
 export const createTimePlan = (input: { task_id: string; starts_at: string; ends_at: string }) =>
   apiFetch<TimePlan>("/time-plans", { method: "POST", body: JSON.stringify(input) });
+/** 여러 계획을 한 번에 저장 (AI 하루 계획 승인용, 하나라도 실패하면 아무것도 저장되지 않음) */
+export const createTimePlansBulk = (plans: { task_id: string; starts_at: string; ends_at: string }[]) =>
+  apiFetch<TimePlan[]>("/time-plans/bulk", { method: "POST", body: JSON.stringify({ plans }) });
 export const updateTimePlan = (id: string, input: { starts_at?: string; ends_at?: string }) =>
   apiFetch<TimePlan>(`/time-plans/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(input) });
 export const deleteTimePlan = (id: string) => apiFetch<void>(`/time-plans/${encodeURIComponent(id)}`, { method: "DELETE" });
