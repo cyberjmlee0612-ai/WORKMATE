@@ -2,7 +2,9 @@ from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, ValidationInfo, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
+
+from app.schemas.project import ProjectCreate
 
 # cancelled = '업무에서 제외'. 삭제와 달리 보존되며 KPI·진행률 계산에서 빠진다.
 TaskStatus = Literal["todo", "in_progress", "review", "completed", "cancelled"]
@@ -129,10 +131,72 @@ class TaskUpdate(BaseModel):
         return value
 
 
+BULK_CREATE_MAX = 30
+
+
+class TaskBulkCreate(BaseModel):
+    """AI 제안 등 여러 업무를 한 번에 저장. 각 항목은 TaskCreate와 같은 규칙으로 검증한다.
+
+    new_project를 주면 그 프로젝트를 먼저 만들고 모든 업무를 거기에 넣는다 (2026-11-26 사용자 요청:
+    AI 제안을 개인 업무 대신 프로젝트로). 이때 각 업무의 project_id는 비워 둬야 한다.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    tasks: list[TaskCreate] = Field(min_length=1, max_length=BULK_CREATE_MAX)
+    new_project: ProjectCreate | None = None
+
+    @model_validator(mode="after")
+    def _one_destination(self) -> "TaskBulkCreate":
+        if self.new_project is not None and any(t.project_id is not None for t in self.tasks):
+            raise ValueError("새 프로젝트로 저장할 때는 업무마다 프로젝트를 지정할 수 없습니다.")
+        return self
+
+
+MOVE_MAX = 200
+
+
+class TaskMove(BaseModel):
+    """업무를 다른 프로젝트나 개인 업무(project_id=null)로 옮긴다 (2026-11-26 사용자 요청)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    task_ids: list[UUID] = Field(min_length=1, max_length=MOVE_MAX)
+    project_id: UUID | None
+
+    @field_validator("task_ids")
+    @classmethod
+    def _unique(cls, value: list[UUID]) -> list[UUID]:
+        return list(dict.fromkeys(value))
+
+
+class TaskBulkDelete(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    task_ids: list[UUID] = Field(min_length=1, max_length=MOVE_MAX)
+
+    @field_validator("task_ids")
+    @classmethod
+    def _unique(cls, value: list[UUID]) -> list[UUID]:
+        return list(dict.fromkeys(value))
+
+
+class TaskBulkDeleteResult(BaseModel):
+    deleted: int
+    missing: int
+
+
+class TaskMoveResult(BaseModel):
+    moved: int
+    unchanged: int  # 이미 그곳에 있던 업무
+    missing: int  # 없거나(다른 곳에서 삭제) 남의 업무
+
+
 class TaskOut(BaseModel):
     id: UUID
     project_id: UUID | None
     project_name: str | None
+    project_path: str | None = None  # "상위 › 하위" (개인 업무면 null)
     title: str
     description: str | None
     status: TaskStatus

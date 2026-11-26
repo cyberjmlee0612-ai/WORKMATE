@@ -43,6 +43,7 @@ class ProjectCreate(BaseModel):
     status: EditableProjectStatus = "planning"
     start_date: date | None = None
     due_date: date | None = None
+    parent_id: UUID | None = None  # 상위 프로젝트 (없으면 최상위). 최대 3단계
 
     _name = field_validator("name")(_clean_name)
     _description = field_validator("description")(_clean_description)
@@ -63,6 +64,7 @@ class ProjectUpdate(BaseModel):
     status: EditableProjectStatus | None = None
     start_date: date | None = None
     due_date: date | None = None
+    parent_id: UUID | None = None  # null을 보내면 최상위로 꺼낸다
 
     @field_validator("name")
     @classmethod
@@ -95,10 +97,17 @@ class ProjectOut(BaseModel):
     due_date: date | None
     created_at: datetime
     updated_at: datetime
+    parent_id: UUID | None = None
+    parent_name: str | None = None
+    subproject_count: int = 0  # 바로 아래 하위 프로젝트 수
+    # 진행률 관련 수는 하위 프로젝트 업무까지 합산 (2026-11-26 사용자 확정)
     total_tasks: int  # 제외(cancelled)된 업무는 빠진 수
     completed_tasks: int
-    cancelled_tasks: int
     progress: int  # 0–100, 내림 (99.6% → 99%)
+    # 이 프로젝트에 직접 속한 업무만
+    own_total_tasks: int = 0
+    own_completed_tasks: int = 0
+    cancelled_tasks: int
     completed_at: datetime | None  # 현재 완료 상태일 때: 마지막 완료 시각
     open_tasks_at_completion: int | None  # 현재 완료 상태일 때: 완료 당시 미완료 업무 수
     archived_at: datetime | None  # 현재 보관 상태일 때: 마지막 보관 시각
@@ -121,3 +130,4 @@ class ProjectStatusEvent(BaseModel):
     to_status: ProjectStatus
     open_tasks: int | None
     occurred_at: datetime
+    via_project_name: str | None = None  # 상위 프로젝트와 함께 보관·복원된 경우 그 상위 이름

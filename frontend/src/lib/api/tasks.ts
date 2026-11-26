@@ -35,6 +35,8 @@ export type Task = {
   id: string;
   project_id: string | null; // null이면 개인 업무
   project_name: string | null;
+  /** "상위 › 하위" 경로 (개인 업무면 null) */
+  project_path: string | null;
   title: string;
   description: string | null;
   status: TaskStatus;
@@ -67,6 +69,8 @@ export type TaskFilters = {
   project_id?: string;
   status?: TaskStatus;
   priority?: TaskPriority;
+  /** project_id와 함께: 하위 프로젝트 업무까지 */
+  include_subprojects?: boolean;
 };
 
 export const taskKeys = {
@@ -77,7 +81,7 @@ export const taskKeys = {
 export function listTasks(filters: TaskFilters = {}) {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(filters)) {
-    if (value) params.set(key, value);
+    if (value) params.set(key, String(value));
   }
   const query = params.toString();
   return apiFetch<Task[]>(`/tasks${query ? `?${query}` : ""}`);
@@ -88,4 +92,13 @@ export type TaskUpdateInput = Partial<TaskInput> & { cancel_reason?: string | nu
 
 export const updateTask = (id: string, input: TaskUpdateInput) =>
   apiFetch<Task>(`/tasks/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(input) });
+/** 여러 업무를 다른 프로젝트나 개인 업무(projectId=null)로 옮긴다. 완료·보관한 프로젝트로는 옮길 수 없다. */
+export type TaskMoveResult = { moved: number; unchanged: number; missing: number };
+export const moveTasks = (taskIds: string[], projectId: string | null) =>
+  apiFetch<TaskMoveResult>("/tasks/move", { method: "POST", body: JSON.stringify({ task_ids: taskIds, project_id: projectId }) });
+
+/** 여러 업무 삭제 (편집 모드). 시간 기록·계획도 함께 지워진다. */
+export const deleteTasksBulk = (taskIds: string[]) =>
+  apiFetch<{ deleted: number; missing: number }>("/tasks/bulk-delete", { method: "POST", body: JSON.stringify({ task_ids: taskIds }) });
+
 export const deleteTask = (id: string) => apiFetch<void>(`/tasks/${encodeURIComponent(id)}`, { method: "DELETE" });

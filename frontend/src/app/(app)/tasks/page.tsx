@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { ListTodo, Plus } from "lucide-react";
 import { listProjects, projectKeys } from "@/lib/api/projects";
+import { ancestorsOf, buildTree, descendantsOf } from "@/lib/projectTree";
 import {
   TASK_FILTER_STATUSES, TASK_PRIORITIES, TASK_PRIORITY_LABEL, TASK_STATUS_LABEL, listTasks, taskKeys,
   type TaskFilters, type TaskScope,
@@ -40,14 +41,27 @@ function TasksContent() {
 
   // 필터는 URL에 저장해 새로고침·공유 시에도 유지한다. 잘못된 값은 무시한다.
   const scope = pick(searchParams.get("scope"), ["all", "project", "personal"] as const) ?? "all";
+  // 프로젝트 필터는 두 단계 (2026-11-26 사용자 요청: 상위·하위 보기 분리)
+  //   project_id = 최상위 프로젝트, sub = 없음(하위 포함 전체) | "own"(그 프로젝트 업무만) | 하위 프로젝트 ID(그 하위와 그 아래)
   const projectId = scope === "project" ? searchParams.get("project_id") ?? undefined : undefined;
+  const sub = projectId ? searchParams.get("sub") ?? undefined : undefined;
   // 상태 필터가 없으면 서버가 제외(cancelled)한 업무를 숨긴다. '제외됨'을 고르면 제외한 업무만 본다.
   const status = pick(searchParams.get("status"), TASK_FILTER_STATUSES);
   const priority = pick(searchParams.get("priority"), TASK_PRIORITIES);
-  const filters: TaskFilters = { scope, project_id: projectId, status, priority };
+  const projectFilter: Pick<TaskFilters, "project_id" | "include_subprojects"> = !projectId
+    ? {}
+    : sub === "own"
+      ? { project_id: projectId }
+      : { project_id: sub ?? projectId, include_subprojects: true };
+  const filters: TaskFilters = { scope, ...projectFilter, status, priority };
 
   const tasksQuery = useQuery({ queryKey: taskKeys.list(filters), queryFn: () => listTasks(filters) });
   const projectsQuery = useQuery({ queryKey: projectKeys.list(), queryFn: listProjects, enabled: scope === "project" });
+  const tree = buildTree(projectsQuery.data ?? []);
+  const topProjects = [...tree.byId.values()]
+    .filter((p) => !p.parent_id || !tree.byId.has(p.parent_id))
+    .sort((a, b) => a.name.localeCompare(b.name, "ko"));
+  const subOptions = projectId && tree.byId.has(projectId) ? descendantsOf(tree, projectId) : [];
 
   function setParams(changes: Record<string, string | undefined>) {
     const next = new URLSearchParams(searchParams.toString());
@@ -85,7 +99,7 @@ function TasksContent() {
                 type="button"
                 role="tab"
                 aria-selected={scope === value}
-                onClick={() => setParams({ scope: value, project_id: undefined })}
+                onClick={() => setParams({ scope: value, project_id: undefined, sub: undefined })}
                 className={`min-h-10 rounded-lg px-3 text-sm font-medium transition-colors ${scope === value ? "bg-surface font-semibold text-primary-dark shadow-sm" : "text-muted hover:text-primary-dark"}`}
               >
                 {label}
@@ -95,9 +109,28 @@ function TasksContent() {
 
           <div className="flex flex-wrap items-center gap-2">
             {scope === "project" && (
-              <select aria-label="프로젝트 필터" value={projectId ?? ""} onChange={(e) => setParams({ project_id: e.target.value || undefined })} className={selectClass}>
+              <select aria-label="프로젝트" value={projectId ?? ""} onChange={(e) => setParams({ project_id: e.target.value || undefined, sub: undefined })} className={selectClass}>
                 <option value="">모든 프로젝트</option>
-                {projectsQuery.data?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                {topProjects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}{p.subproject_count > 0 ? ` (하위 ${p.subproject_count})` : ""}
+                  </option>
+                ))}
+              </select>
+            )}
+            {scope === "project" && subOptions.length > 0 && (
+              <select aria-label="하위 프로젝트 범위" value={sub ?? ""} onChange={(e) => setParams({ sub: e.target.value || undefined })} className={selectClass}>
+                <option value="">하위 포함 전체</option>
+                <option value="own">‘{tree.byId.get(projectId!)?.name}’ 업무만</option>
+                {subOptions.map((d) => {
+                  const depth = ancestorsOf(tree, d.id).length - ancestorsOf(tree, projectId!).length - 1;
+                  return (
+                    <option key={d.id} value={d.id}>
+                      {"  ".repeat(depth)}└ {d.name}
+                      {(tree.children.get(d.id)?.length ?? 0) > 0 ? " (하위 포함)" : ""}
+                    </option>
+                  );
+                })}
               </select>
             )}
             <select aria-label="상태 필터" value={status ?? ""} onChange={(e) => setParams({ status: e.target.value || undefined })} className={selectClass}>
@@ -114,7 +147,7 @@ function TasksContent() {
         <div className="mt-4 flex items-center justify-between text-sm text-muted" aria-live="polite">
           {tasksQuery.data && <span>{tasksQuery.data.length}개의 업무</span>}
           {hasFilter && (
-            <button type="button" onClick={() => setParams({ status: undefined, priority: undefined, project_id: undefined })} className="min-h-11 rounded-lg px-2 font-medium text-primary hover:underline">
+            <button type="button" onClick={() => setParams({ status: undefined, priority: undefined, project_id: undefined, sub: undefined })} className="min-h-11 rounded-lg px-2 font-medium text-primary hover:underline">
               필터 초기화
             </button>
           )}
@@ -128,6 +161,7 @@ function TasksContent() {
           ) : (
             <TaskList
               tasks={tasksQuery.data}
+              movable
               empty={
                 <EmptyState
                   icon={ListTodo}

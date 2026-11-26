@@ -35,10 +35,13 @@ def get_kpi(db: Connection[DictRow], user_id: UUID) -> dict[str, Any]:
 
 
 def list_dashboard_projects(db: Connection[DictRow], user_id: UUID) -> list[DictRow]:
+    # 진행 중인 프로젝트 중 '상위가 진행 중이 아닌 것'만 (하위는 상위 카드의 합산 진행률에 들어가므로 중복 표시하지 않는다)
     return db.execute(
         PROJECT_SELECT
-        + " where p.user_id = %s and p.status = any(%s) order by p.updated_at desc, p.created_at desc limit %s",
-        (user_id, list(ACTIVE_PROJECT_STATUSES), DASHBOARD_PROJECT_LIMIT),
+        + """ where p.user_id = %(u)s and p.status = any(%(active)s)
+              and (pp.id is null or not (pp.status = any(%(active)s)))
+              order by p.updated_at desc, p.created_at desc limit %(limit)s""",
+        {"u": user_id, "active": list(ACTIVE_PROJECT_STATUSES), "limit": DASHBOARD_PROJECT_LIMIT},
     ).fetchall()
 
 

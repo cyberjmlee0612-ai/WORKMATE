@@ -20,7 +20,7 @@ const navigation: NavItem[] = [
   { label: "대시보드", icon: Home, href: "/" },
   { label: "내 프로젝트", icon: FolderKanban, href: "/projects" },
   { label: "업무 관리", icon: ListTodo, href: "/tasks" },
-  { label: "AI 업무 도우미", icon: Sparkles, ai: true },
+  { label: "AI 업무 도우미", icon: Sparkles, ai: true, href: "/assistant" },
   { label: "캘린더", icon: CalendarDays, href: "/calendar" },
   { label: "리포트", icon: ChartNoAxesCombined },
   { label: "설정", icon: Settings2 },
@@ -86,7 +86,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <MobileItem icon={Home} label="대시보드" href="/" active={isActive(pathname, "/")} />
         <MobileItem icon={FolderKanban} label="내 프로젝트" href="/projects" active={isActive(pathname, "/projects")} />
         <MobileItem icon={ListTodo} label="업무 관리" href="/tasks" active={isActive(pathname, "/tasks")} />
-        <MobileItem icon={Sparkles} label="AI 어시스턴트" />
+        <MobileItem icon={Sparkles} label="AI 어시스턴트" href="/assistant" active={isActive(pathname, "/assistant")} />
         <button type="button" onClick={() => setMoreOpen((value) => !value)} className={`flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-xl text-muted ${moreOpen ? "bg-pale-green text-primary-dark" : ""}`} aria-expanded={moreOpen} aria-controls="mobile-more" aria-label="더보기 메뉴" title="더보기"><MoreHorizontal size={20} strokeWidth={2} aria-hidden="true" /><span className="truncate text-[11px]">더보기</span></button>
         {moreOpen && <div id="mobile-more" className="surface-card absolute bottom-full right-3 mb-2 w-44 rounded-2xl p-2" role="group" aria-label="더보기 메뉴">{navigation.slice(4).map(({ label, icon: Icon, href }) =>
           href ? (

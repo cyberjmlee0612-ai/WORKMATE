@@ -12,8 +12,9 @@ function describe(event: ProjectStatusEvent): string {
   if (event.action === "complete") {
     return event.open_tasks ? `완료 · 완료 당시 미완료 업무 ${event.open_tasks}개` : "완료 · 모든 업무 완료";
   }
-  if (event.action === "archive") return `보관 (${PROJECT_STATUS_LABEL[event.from_status]} 상태에서)`;
-  return `다시 열기 → ${PROJECT_STATUS_LABEL[event.to_status]}`;
+  const via = event.via_project_name ? ` · 상위 ‘${event.via_project_name}’와 함께` : "";
+  if (event.action === "archive") return `보관 (${PROJECT_STATUS_LABEL[event.from_status]} 상태에서)${via}`;
+  return `다시 열기 → ${PROJECT_STATUS_LABEL[event.to_status]}${via}`;
 }
 
 /** 완료·보관·복원 이력 (최신순). 기록이 없으면 표시하지 않는다. */

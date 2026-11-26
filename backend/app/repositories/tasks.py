@@ -27,9 +27,23 @@ select
     select floor(sum(extract(epoch from pl.ends_at - pl.starts_at)) / 60)::int
     from public.task_time_plans pl
     where pl.task_id = t.id and pl.user_id = t.user_id
-  ), 0) as planned_minutes
+  ), 0) as planned_minutes,
+  -- "상위 › 하위" 경로 (최대 3단계)
+  nullif(concat_ws(' › ', gp.name, pp.name, p.name), '') as project_path
 from public.tasks t
 left join public.projects p on p.id = t.project_id and p.user_id = t.user_id
+left join public.projects pp on pp.id = p.parent_id and pp.user_id = t.user_id
+left join public.projects gp on gp.id = pp.parent_id and gp.user_id = t.user_id
+"""
+
+# project_id와 그 하위(최대 3단계) 프로젝트 ID
+_SUBTREE_IDS = """
+  select %(project_id)s::uuid
+  union all
+  select c1.id from public.projects c1 where c1.user_id = %(user_id)s and c1.parent_id = %(project_id)s
+  union all
+  select c2.id from public.projects c2 join public.projects m on c2.parent_id = m.id
+  where c2.user_id = %(user_id)s and m.user_id = %(user_id)s and m.parent_id = %(project_id)s
 """
 
 # 진행 중인 업무 먼저 → 완료 → 제외 순, 그 안에서 마감일 빠른 순(없으면 뒤) → 우선순위 높은 순 → 최근 생성 순
@@ -62,12 +76,17 @@ def list_tasks(
     project_id: UUID | None = None,
     status: str | None = None,
     priority: str | None = None,
+    include_subprojects: bool = False,
 ) -> list[DictRow]:
     conditions = [sql.SQL("t.user_id = %(user_id)s")]
     params: dict[str, Any] = {"user_id": user_id, "limit": LIST_LIMIT}
 
     if project_id is not None:
-        conditions.append(sql.SQL("t.project_id = %(project_id)s"))
+        # include_subprojects: 그 프로젝트와 하위 프로젝트의 업무를 함께 (2026-11-26 사용자 요청: 상위·하위 보기 분리)
+        if include_subprojects:
+            conditions.append(sql.SQL("t.project_id in (" + _SUBTREE_IDS + ")"))
+        else:
+            conditions.append(sql.SQL("t.project_id = %(project_id)s"))
         params["project_id"] = project_id
     elif scope == "personal":
         conditions.append(sql.SQL("t.project_id is null"))
@@ -136,6 +155,46 @@ def update_task(db: Connection[DictRow], user_id: UUID, task_id: UUID, data: Tas
             {**changes, "user_id": user_id, "task_id": task_id},
         )
     return get_task(db, user_id, task_id)
+
+
+CLOSED_PROJECT_MESSAGE = "완료하거나 보관한 프로젝트로는 옮길 수 없어요. 먼저 프로젝트를 다시 열어 주세요."
+
+
+def move_tasks(db: Connection[DictRow], user_id: UUID, task_ids: list[UUID], project_id: UUID | None) -> dict[str, int]:
+    """업무를 다른 프로젝트나 개인 업무(None)로 옮긴다. 업무 ID는 그대로라 시간 기록·계획도 따라간다.
+
+    완료·보관한 프로젝트로는 옮기지 않는다 (목록에서 보이지 않는 곳으로 업무가 사라지지 않게).
+    """
+    if project_id is not None:
+        project = db.execute(
+            "select status from public.projects where user_id = %s and id = %s for share",
+            (user_id, project_id),
+        ).fetchone()
+        if project is None:
+            raise FieldError("project_id", PROJECT_NOT_FOUND)
+        if project["status"] in ("completed", "archived"):
+            raise FieldError("project_id", CLOSED_PROJECT_MESSAGE)
+
+    found = db.execute(
+        "select id, project_id from public.tasks where user_id = %s and id = any(%s) for update",
+        (user_id, task_ids),
+    ).fetchall()
+    to_move = [r["id"] for r in found if r["project_id"] != project_id]
+    if to_move:
+        db.execute(
+            "update public.tasks set project_id = %s where user_id = %s and id = any(%s)",
+            (project_id, user_id, to_move),
+        )
+    return {"moved": len(to_move), "unchanged": len(found) - len(to_move), "missing": len(task_ids) - len(found)}
+
+
+def delete_tasks(db: Connection[DictRow], user_id: UUID, task_ids: list[UUID]) -> dict[str, int]:
+    """여러 업무 삭제 (편집 모드). 시간 기록·계획은 FK CASCADE로 함께 지워진다."""
+    deleted = db.execute(
+        "delete from public.tasks where user_id = %s and id = any(%s)",
+        (user_id, task_ids),
+    ).rowcount
+    return {"deleted": deleted, "missing": len(task_ids) - deleted}
 
 
 def delete_task(db: Connection[DictRow], user_id: UUID, task_id: UUID) -> bool:

@@ -2,7 +2,9 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { Ban, CircleAlert, Clock, FolderKanban, History, Info, Pencil, Trash2, UserRound } from "lucide-react";
+import { ListChecks, Ban, CircleAlert, Clock, FolderKanban, History, Info, Pencil, Trash2, UserRound } from "lucide-react";
+import { MoveTasksBar } from "./MoveTasksBar";
+import { endDrag, startDrag } from "@/lib/dnd";
 import { TaskTimerButton } from "@/components/time/TaskTimerButton";
 import { TimeEntriesDialog } from "@/components/time/TimeEntriesDialog";
 import type { Task } from "@/lib/api/tasks";
@@ -21,20 +23,64 @@ type Props = {
   /** 프로젝트 상세에서는 프로젝트명을 반복해서 보여줄 필요가 없다 */
   showProject?: boolean;
   empty?: ReactNode;
+  /** 여러 업무를 골라 다른 프로젝트·개인 업무로 옮기는 기능 표시 (업무 관리·프로젝트 상세) */
+  movable?: boolean;
+  /** 업무 행을 끌어서 프로젝트 카드(폴더)에 넣을 수 있게 (프로젝트 상세의 하위 프로젝트 등) */
+  draggableRows?: boolean;
 };
 
-/** 업무 목록 + 수정·삭제·제외 창 관리 */
-export function TaskList({ tasks, showProject = true, empty }: Props) {
+/** 업무 목록 + 수정·삭제·제외·이동 창 관리 */
+export function TaskList({ tasks, showProject = true, empty, movable = false, draggableRows = false }: Props) {
   const [editing, setEditing] = useState<Task | null>(null);
   const [deleting, setDeleting] = useState<Task | null>(null);
   const [cancelling, setCancelling] = useState<Task | null>(null);
   const [timing, setTiming] = useState<Task | null>(null);
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [moveNotice, setMoveNotice] = useState<string | null>(null);
   const today = useToday();
 
-  if (tasks.length === 0) return <>{empty}</>;
+  useEffect(() => {
+    if (!moveNotice) return;
+    const id = window.setTimeout(() => setMoveNotice(null), 6000);
+    return () => window.clearTimeout(id);
+  }, [moveNotice]);
+
+  // 다시 조회해서 목록에서 빠진 업무는 선택에서도 뺀다
+  const selectedIds = tasks.filter((t) => selected.has(t.id)).map((t) => t.id);
+  const stopSelecting = () => {
+    setSelecting(false);
+    setSelected(new Set());
+  };
+  const toggle = (id: string) =>
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const notice = moveNotice && (
+    <p className="mb-2 flex items-center gap-1.5 rounded-xl bg-pale-green/60 px-3 py-2 text-sm text-primary-dark" role="status">
+      <Info size={16} strokeWidth={2} className="shrink-0" aria-hidden="true" />
+      {moveNotice}
+    </p>
+  );
+
+  if (tasks.length === 0) return <>{notice}{empty}</>;
 
   return (
     <>
+      {notice}
+      {movable && !selecting && (
+        <div className="flex justify-end">
+          <button type="button" onClick={() => setSelecting(true)} className="flex min-h-11 items-center gap-1.5 rounded-xl px-3 text-sm font-semibold text-primary-dark hover:bg-pale-green">
+            <ListChecks size={16} strokeWidth={2} aria-hidden="true" />
+            편집
+          </button>
+        </div>
+      )}
+      {selecting && <p className="text-sm text-muted">업무를 여러 개 고른 뒤, 아래에서 옮기거나 삭제하세요.</p>}
       <ul className="divide-y divide-border">
         {tasks.map((task) => (
           <TaskRow
@@ -42,6 +88,11 @@ export function TaskList({ tasks, showProject = true, empty }: Props) {
             task={task}
             today={today}
             showProject={showProject}
+            selection={selecting ? { checked: selected.has(task.id), onToggle: () => toggle(task.id) } : null}
+            draggable={draggableRows}
+            // 편집 모드에서 고른 업무를 끌면 고른 것 전부를 함께 끈다
+            dragTasks={selecting && selected.has(task.id) && selectedIds.length > 1 ? tasks.filter((t) => selected.has(t.id)) : [task]}
+            onDragged={stopSelecting}
             onEdit={() => setEditing(task)}
             onDelete={() => setDeleting(task)}
             onCancel={() => setCancelling(task)}
@@ -49,6 +100,19 @@ export function TaskList({ tasks, showProject = true, empty }: Props) {
           />
         ))}
       </ul>
+      {selecting && (
+        <MoveTasksBar
+          selectedIds={selectedIds}
+          totalCount={tasks.length}
+          onSelectAll={() => setSelected(new Set(tasks.map((t) => t.id)))}
+          onClearAll={() => setSelected(new Set())}
+          onDone={(message) => {
+            setMoveNotice(message);
+            stopSelecting();
+          }}
+          onCancel={stopSelecting}
+        />
+      )}
       {timing && <TimeEntriesDialog task={timing} onClose={() => setTiming(null)} />}
       {editing && <TaskFormDialog task={editing} onClose={() => setEditing(null)} />}
       {deleting && <DeleteTaskDialog task={deleting} onClose={() => setDeleting(null)} />}
@@ -65,9 +129,14 @@ type RowProps = {
   onDelete: () => void;
   onCancel: () => void;
   onOpenTime: () => void;
+  /** 이동할 업무를 고르는 중이면 완료 체크 대신 선택 체크를 보여주고 행 동작 버튼을 숨긴다 */
+  selection: { checked: boolean; onToggle: () => void } | null;
+  draggable: boolean;
+  dragTasks: Task[];
+  onDragged: () => void;
 };
 
-function TaskRow({ task, today, showProject, onEdit, onDelete, onCancel, onOpenTime }: RowProps) {
+function TaskRow({ task, today, showProject, selection, draggable, dragTasks, onDragged, onEdit, onDelete, onCancel, onOpenTime }: RowProps) {
   const done = task.status === "completed";
   const cancelled = task.status === "cancelled";
   const minutes = formatMinutes(task.estimated_minutes);
@@ -82,8 +151,36 @@ function TaskRow({ task, today, showProject, onEdit, onDelete, onCancel, onOpenT
   }, [rowNotice]);
 
   return (
-    <li className={`flex min-w-0 items-start gap-2 py-4 md:gap-3 ${cancelled ? "opacity-75" : ""}`}>
-      {cancelled ? (
+    <li
+      draggable={draggable}
+      onDragStart={
+        draggable
+          ? (event) =>
+              startDrag(event, {
+                kind: "task",
+                ids: dragTasks.map((t) => t.id),
+                name: dragTasks.length > 1 ? `업무 ${dragTasks.length}개` : task.title,
+                fromProjectIds: dragTasks.map((t) => t.project_id),
+              })
+          : undefined
+      }
+      onDragEnd={
+        draggable
+          ? (event) => {
+              endDrag();
+              // 다른 곳에 놓아 옮겼으면 편집 모드를 끝낸다 (dropEffect: none = 놓지 않음)
+              if (selection && event.dataTransfer.dropEffect !== "none") onDragged();
+            }
+          : undefined
+      }
+      title={draggable ? "끌어서 프로젝트 카드에 넣을 수 있어요" : undefined}
+      className={`flex min-w-0 items-start gap-2 py-4 md:gap-3 ${cancelled ? "opacity-75" : ""} ${selection?.checked ? "bg-pale-green/40" : ""} ${draggable ? "md:cursor-grab md:active:cursor-grabbing" : ""}`}
+    >
+      {selection ? (
+        <label className="flex size-11 shrink-0 cursor-pointer items-center justify-center">
+          <input type="checkbox" checked={selection.checked} onChange={selection.onToggle} className="size-5 accent-[var(--color-primary)]" aria-label={`${task.title} 이동할 업무로 선택`} />
+        </label>
+      ) : cancelled ? (
         // 제외한 업무는 완료 체크 대상이 아니다. 상태 메뉴로 되돌린 뒤 체크할 수 있다.
         <span className="flex size-11 shrink-0 items-center justify-center text-muted" aria-hidden="true">
           <Ban size={18} strokeWidth={2} />
@@ -107,7 +204,7 @@ function TaskRow({ task, today, showProject, onEdit, onDelete, onCancel, onOpenT
             (task.project_id ? (
               <Link href={`/projects/${task.project_id}`} className="inline-flex items-center gap-1 rounded hover:text-primary-dark hover:underline">
                 <FolderKanban size={14} strokeWidth={2} aria-hidden="true" />
-                {task.project_name}
+                {task.project_path ?? task.project_name}
               </Link>
             ) : (
               <span className="inline-flex items-center gap-1">
@@ -142,6 +239,7 @@ function TaskRow({ task, today, showProject, onEdit, onDelete, onCancel, onOpenT
           </p>
         )}
       </div>
+      {!selection && (
       <div className="flex shrink-0 items-center gap-1">
         <TaskTimerButton task={task} onError={setRowError} onNotice={setRowNotice} />
         <button type="button" onClick={onEdit} className="flex size-11 items-center justify-center rounded-xl text-muted hover:bg-pale-green hover:text-primary-dark" aria-label={`${task.title} 수정`} title="수정">
@@ -151,6 +249,7 @@ function TaskRow({ task, today, showProject, onEdit, onDelete, onCancel, onOpenT
           <Trash2 size={18} strokeWidth={2} aria-hidden="true" />
         </button>
       </div>
+      )}
     </li>
   );
 }

@@ -5,3 +5,4 @@ psycopg-pool==3.3.3
 PyJWT[crypto]==2.15.1
 pydantic-settings==2.16.2
 tzdata==2026.6  # zoneinfo 시간대 데이터 (Windows에는 시스템 DB가 없음)
+google-genai==3.6.1  # AI 업무 도우미 (Gemini API)

@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { buildTree, parentOptions } from "@/lib/projectTree";
 import { CircleAlert, LoaderCircle, X } from "lucide-react";
 import { ApiError } from "@/lib/api/client";
 import {
-  EDITABLE_PROJECT_STATUSES, PROJECT_STATUS_LABEL, createProject, isEditableStatus, projectKeys, updateProject,
+  EDITABLE_PROJECT_STATUSES, PROJECT_STATUS_LABEL, createProject, isEditableStatus, listProjects, projectKeys, updateProject,
   type EditableProjectStatus, type Project, type ProjectInput,
 } from "@/lib/api/projects";
 import { invalidateWorkData } from "@/lib/api/invalidate";
@@ -13,16 +14,17 @@ import { invalidateWorkData } from "@/lib/api/invalidate";
 const NAME_MAX = 200;
 const DESCRIPTION_MAX = 2000;
 
-type Fields = { name: string; description: string; status: EditableProjectStatus; start_date: string; due_date: string };
+type Fields = { name: string; description: string; status: EditableProjectStatus; start_date: string; due_date: string; parent_id: string };
 type FieldErrors = Partial<Record<keyof Fields | "_form", string>>;
 
-function initialFields(project?: Project): Fields {
+function initialFields(project?: Project, defaultParentId?: string): Fields {
   return {
     name: project?.name ?? "",
     description: project?.description ?? "",
     status: project && isEditableStatus(project.status) ? project.status : "planning",
     start_date: project?.start_date ?? "",
     due_date: project?.due_date ?? "",
+    parent_id: project ? (project.parent_id ?? "") : (defaultParentId ?? ""),
   };
 }
 
@@ -41,19 +43,25 @@ function validate(fields: Fields): FieldErrors {
 type Props = {
   /** 없으면 생성, 있으면 수정 */
   project?: Project;
+  /** 새로 만들 때 미리 고를 상위 프로젝트 (프로젝트 상세의 '하위 프로젝트 추가') */
+  defaultParentId?: string;
   onClose: () => void;
   onSaved?: (project: Project) => void;
 };
 
 /** 열 때마다 새로 마운트해서 사용한다: `{open && <ProjectFormDialog … />}` */
-export function ProjectFormDialog({ project, onClose, onSaved }: Props) {
+export function ProjectFormDialog({ project, defaultParentId, onClose, onSaved }: Props) {
   const isEdit = Boolean(project);
   const statusEditable = !project || isEditableStatus(project.status);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const formId = useId();
   const queryClient = useQueryClient();
 
-  const [fields, setFields] = useState<Fields>(() => initialFields(project));
+  const [fields, setFields] = useState<Fields>(() => initialFields(project, defaultParentId));
+  // 상위 프로젝트 선택지: 3단계·순환·완료/보관 규칙에 맞는 것만 (서버도 다시 검사)
+  const projectsQuery = useQuery({ queryKey: projectKeys.list(), queryFn: listProjects });
+  const tree = buildTree(projectsQuery.data ?? []);
+  const parentChoices = parentOptions(tree, project?.id ?? null);
   const [errors, setErrors] = useState<FieldErrors>({});
 
   const mutation = useMutation({
@@ -103,6 +111,8 @@ export function ProjectFormDialog({ project, onClose, onSaved }: Props) {
       start_date: fields.start_date || null,
       due_date: fields.due_date || null,
       ...(statusEditable ? { status: fields.status } : {}),
+      // 수정할 때는 바뀐 경우에만 보낸다 (그대로면 계층 검사를 다시 할 필요가 없다)
+      ...(!project || (project.parent_id ?? "") !== fields.parent_id ? { parent_id: fields.parent_id || null } : {}),
     };
     mutation.mutate(input);
   }
@@ -157,6 +167,17 @@ export function ProjectFormDialog({ project, onClose, onSaved }: Props) {
             설명
             <textarea value={fields.description} onChange={(e) => update("description", e.target.value)} rows={3} className={`${inputClass(Boolean(errors.description))} py-2.5 leading-6`} placeholder="프로젝트 목표나 메모 (선택)" {...a11y("description")} />
             {errorText("description")}
+          </label>
+
+          <label className="block text-sm font-medium">
+            상위 프로젝트 <span className="font-normal text-muted">(최대 3단계)</span>
+            <select value={fields.parent_id} onChange={(e) => update("parent_id", e.target.value)} disabled={projectsQuery.isPending} className={inputClass(Boolean(errors.parent_id))} {...a11y("parent_id")}>
+              <option value="">없음 (최상위)</option>
+              {parentChoices.map(({ project: p, label }) => (
+                <option key={p.id} value={p.id}>{label}</option>
+              ))}
+            </select>
+            {errorText("parent_id")}
           </label>
 
           {statusEditable ? (

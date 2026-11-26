@@ -6,8 +6,8 @@ import { ArrowLeft, ChevronDown, CircleAlert, Info, LoaderCircle, Trash2, UserRo
 import { ApiError } from "@/lib/api/client";
 import { dashboardKeys } from "@/lib/api/dashboard";
 import {
-  deleteProject, getDeletionPreview, isTasksChanged, projectKeys,
-  type DeletionMode, type Project,
+  deleteProject, getDeletionPreview, isSubprojectsChanged, isTasksChanged, projectKeys,
+  type DeletionMode, type Project, type SubprojectMode, type SubprojectSummary,
 } from "@/lib/api/projects";
 import { taskKeys, type Task } from "@/lib/api/tasks";
 import { TaskStatusBadge } from "@/components/tasks/TaskBadges";
@@ -56,6 +56,12 @@ export function DeleteProjectDialog({ project, onClose, onDeleted }: Props) {
   const [listOpen, setListOpen] = useState(true);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // 하위 프로젝트 처리 (2026-11-26 사용자 확정): 기본은 한 단계 위로 꺼내기, 함께 삭제를 고를 수 있다
+  const [latestSubs, setLatestSubs] = useState<SubprojectSummary[] | null>(null);
+  const subs = latestSubs ?? preview.data?.subprojects ?? [];
+  const [subMode, setSubMode] = useState<SubprojectMode>("lift");
+  const subTaskCount = subs.reduce((n, s) => n + s.task_count, 0);
+  const liftTarget = preview.data?.parent_name ? `‘${preview.data.parent_name}’ 안` : "최상위";
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -73,7 +79,13 @@ export function DeleteProjectDialog({ project, onClose, onDeleted }: Props) {
 
   const mutation = useMutation({
     mutationFn: (input: { mode: DeletionMode; keepIds: string[]; expectedIds: string[] }) =>
-      deleteProject(project.id, { mode: input.mode, expected_task_ids: input.expectedIds, keep_task_ids: input.keepIds }),
+      deleteProject(project.id, {
+        mode: input.mode,
+        expected_task_ids: input.expectedIds,
+        keep_task_ids: input.keepIds,
+        subprojects: subMode,
+        expected_subproject_ids: subs.map((s) => s.id),
+      }),
     onSuccess: finish,
     onError: (err) => {
       if (err instanceof ApiError && err.status === 404) {
@@ -88,6 +100,12 @@ export function DeleteProjectDialog({ project, onClose, onDeleted }: Props) {
         setLatestTasks(latest);
         setStep("choose");
         setMode(latest.length === 0 ? null : mode);
+        setNotice(err.body.detail);
+        return;
+      }
+      if (err instanceof ApiError && err.status === 409 && isSubprojectsChanged(err.body)) {
+        setLatestSubs(err.body.subprojects);
+        setStep("choose");
         setNotice(err.body.detail);
         return;
       }
@@ -120,6 +138,33 @@ export function DeleteProjectDialog({ project, onClose, onDeleted }: Props) {
     });
   }
 
+  const subChoice = subs.length > 0 && (
+    <fieldset className="mt-4 rounded-xl border border-border p-3.5" disabled={pending}>
+      <legend className="px-1 text-sm font-semibold text-primary-dark">하위 프로젝트 {subs.length}개</legend>
+      <ul className="mb-2 max-h-28 overflow-y-auto text-xs text-muted">
+        {subs.map((s) => (
+          <li key={s.id} style={{ paddingLeft: `${(s.depth - 1) * 12}px` }}>
+            └ {s.name} <span className="font-geist">(업무 {s.task_count})</span>
+          </li>
+        ))}
+      </ul>
+      <label className="flex min-h-11 cursor-pointer items-start gap-3 py-1">
+        <input type="radio" name={`${id}-subs`} checked={subMode === "lift"} onChange={() => setSubMode("lift")} className="mt-1 size-4 accent-[var(--primary)]" />
+        <span className="text-sm">
+          <span className="font-semibold text-primary-dark">한 단계 위로 꺼내기</span>
+          <span className="block text-xs text-muted">하위 프로젝트와 그 업무는 {liftTarget}(으)로 옮겨져 그대로 남아요.</span>
+        </span>
+      </label>
+      <label className="flex min-h-11 cursor-pointer items-start gap-3 py-1">
+        <input type="radio" name={`${id}-subs`} checked={subMode === "delete"} onChange={() => setSubMode("delete")} className="mt-1 size-4 accent-red-700" />
+        <span className="text-sm">
+          <span className="font-semibold text-red-800">함께 삭제</span>
+          <span className="block text-xs text-muted">하위 프로젝트 {subs.length}개와 그 안의 업무 {subTaskCount}개가 모두 삭제되고 되돌릴 수 없어요.</span>
+        </span>
+      </label>
+    </fieldset>
+  );
+
   const kept = tasks?.filter((t) => !unselected.has(t.id)) ?? [];
   const dropped = tasks?.filter((t) => unselected.has(t.id)) ?? [];
   const canProceed = mode === "delete" || (mode === "move" && kept.length > 0);
@@ -141,11 +186,14 @@ export function DeleteProjectDialog({ project, onClose, onDeleted }: Props) {
     body = (
       <>
         <p className="mt-2 text-sm leading-6 text-muted">
-          <strong className="font-semibold text-foreground">“{project.name}”</strong>에 연결된 업무가 없어요. 프로젝트를 삭제하면 되돌릴 수 없습니다.
+          <strong className="font-semibold text-foreground">“{project.name}”</strong>에 직접 연결된 업무가 없어요. 프로젝트를 삭제하면 되돌릴 수 없습니다.
         </p>
+        {subChoice}
         <Footer>
           <SecondaryButton onClick={requestClose} disabled={pending}>취소</SecondaryButton>
-          <DangerButton onClick={submit} pending={pending}>프로젝트 삭제</DangerButton>
+          <DangerButton onClick={submit} pending={pending}>
+            {subs.length > 0 && subMode === "delete" ? `하위 ${subs.length}개와 함께 삭제` : "프로젝트 삭제"}
+          </DangerButton>
         </Footer>
       </>
     );
@@ -217,6 +265,8 @@ export function DeleteProjectDialog({ project, onClose, onDeleted }: Props) {
           </label>
         </fieldset>
 
+        {subChoice}
+
         <Footer>
           {/* B. 삭제 취소 */}
           <SecondaryButton onClick={requestClose} disabled={pending}>삭제 취소</SecondaryButton>
@@ -250,6 +300,13 @@ export function DeleteProjectDialog({ project, onClose, onDeleted }: Props) {
             tone="text-red-800"
             empty="삭제될 업무가 없어요."
           />
+          {subs.length > 0 && (
+            <p className={`rounded-xl border p-3.5 text-sm ${subMode === "delete" ? "border-red-200 text-red-800" : "border-border text-primary-dark"}`}>
+              {subMode === "delete"
+                ? `하위 프로젝트 ${subs.length}개와 그 안의 업무 ${subTaskCount}개도 함께 삭제돼요.`
+                : `하위 프로젝트 ${subs.length}개는 ${liftTarget}(으)로 꺼내져 그대로 남아요.`}
+            </p>
+          )}
         </div>
         <p className="mt-4 flex items-start gap-2 text-xs leading-5 text-muted">
           <Info size={14} strokeWidth={2} className="mt-0.5 shrink-0" aria-hidden="true" />

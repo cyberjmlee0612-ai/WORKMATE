@@ -12,6 +12,8 @@ from uuid import UUID
 from psycopg import Connection
 from psycopg.rows import DictRow
 
+from app.repositories import project_tree as tree
+
 ACTIVE_STATUSES = ("planning", "in_progress", "review")
 
 
@@ -51,16 +53,32 @@ def count_open_tasks(db: Connection[DictRow], user_id: UUID, project_id: UUID) -
 
 
 def _change(db: Connection[DictRow], user_id: UUID, project_id: UUID, action: str, from_status: str, to_status: str,
-            open_tasks: int | None = None) -> None:
+            open_tasks: int | None = None, via: UUID | None = None) -> None:
     db.execute("update public.projects set status = %s where user_id = %s and id = %s", (to_status, user_id, project_id))
     # clock_timestamp(): 같은 트랜잭션 안의 여러 이벤트도 순서가 구분되도록 (now()는 트랜잭션 시작 시각으로 고정)
     db.execute(
         """
-        insert into public.project_status_events (user_id, project_id, action, from_status, to_status, open_tasks, occurred_at)
-        values (%s, %s, %s, %s, %s, %s, clock_timestamp())
+        insert into public.project_status_events
+          (user_id, project_id, action, from_status, to_status, open_tasks, via_project_id, occurred_at)
+        values (%s, %s, %s, %s, %s, %s, %s, clock_timestamp())
         """,
-        (user_id, project_id, action, from_status, to_status, open_tasks),
+        (user_id, project_id, action, from_status, to_status, open_tasks, via),
     )
+
+
+def _previous_status(db: Connection[DictRow], user_id: UUID, project_id: UUID, status: str) -> tuple[str, UUID | None]:
+    """현재 상태로 들어오게 만든 마지막 완료/보관 이벤트의 이전 상태와, 상위와 함께 바뀐 경우 그 상위 ID."""
+    previous = db.execute(
+        """
+        select from_status, via_project_id from public.project_status_events
+        where user_id = %s and project_id = %s and to_status = %s and action in ('complete', 'archive')
+        order by occurred_at desc
+        limit 1
+        """,
+        (user_id, project_id, status),
+    ).fetchone()
+    # 이력이 없는 경우(이력 도입 전 데이터 등)는 '진행 중'으로 연다
+    return (previous["from_status"], previous["via_project_id"]) if previous else ("in_progress", None)
 
 
 def complete(db: Connection[DictRow], user_id: UUID, project_id: UUID, confirmed_open_tasks: int) -> bool:
@@ -84,44 +102,53 @@ def complete(db: Connection[DictRow], user_id: UUID, project_id: UUID, confirmed
 
 
 def archive(db: Connection[DictRow], user_id: UUID, project_id: UUID) -> bool:
+    """하위 프로젝트도 함께 보관한다 (이미 보관한 하위는 그대로). 함께 보관한 것은 via_project_id로 표시."""
     status = _lock_status(db, user_id, project_id)
     if status is None:
         return False
     if status == "archived":
         raise InvalidTransition("이미 보관한 프로젝트입니다.")
+    tree.lock_tree(db, user_id)
     _change(db, user_id, project_id, "archive", status, "archived")
+    for child in tree.descendants(db, user_id, project_id):
+        if child["status"] != "archived":
+            _change(db, user_id, child["id"], "archive", child["status"], "archived", via=project_id)
     return True
 
 
 def restore(db: Connection[DictRow], user_id: UUID, project_id: UUID) -> bool:
+    """직전 상태로 되돌린다. 보관에서 다시 열면, 이 프로젝트와 '함께' 보관됐던 하위도 함께 연다."""
     status = _lock_status(db, user_id, project_id)
     if status is None:
         return False
     if status in ACTIVE_STATUSES:
         raise InvalidTransition("이미 진행 중인 프로젝트입니다.")
+    tree.lock_tree(db, user_id)
+    parents = tree.ancestors(db, user_id, project_id)
+    if status == "archived" and parents and parents[-1]["status"] == "archived":
+        raise InvalidTransition(f"상위 프로젝트 ‘{parents[-1]['name']}’이(가) 보관되어 있어요. 상위 프로젝트를 먼저 다시 열어 주세요.")
 
-    previous = db.execute(
-        """
-        select from_status from public.project_status_events
-        where user_id = %s and project_id = %s and to_status = %s and action in ('complete', 'archive')
-        order by occurred_at desc
-        limit 1
-        """,
-        (user_id, project_id, status),
-    ).fetchone()
-    # 이력이 없는 경우(이력 도입 전 데이터 등)는 '진행 중'으로 연다
-    to_status = previous["from_status"] if previous else "in_progress"
+    to_status, _ = _previous_status(db, user_id, project_id, status)
     _change(db, user_id, project_id, "restore", status, to_status)
+
+    if status == "archived":
+        for child in tree.descendants(db, user_id, project_id):
+            if child["status"] != "archived":
+                continue
+            child_to, via = _previous_status(db, user_id, child["id"], "archived")
+            if via == project_id:
+                _change(db, user_id, child["id"], "restore", "archived", child_to, via=project_id)
     return True
 
 
 def list_history(db: Connection[DictRow], user_id: UUID, project_id: UUID) -> list[DictRow]:
     return db.execute(
         """
-        select id, action, from_status, to_status, open_tasks, occurred_at
-        from public.project_status_events
-        where user_id = %s and project_id = %s
-        order by occurred_at desc
+        select e.id, e.action, e.from_status, e.to_status, e.open_tasks, e.occurred_at, v.name as via_project_name
+        from public.project_status_events e
+        left join public.projects v on v.id = e.via_project_id and v.user_id = e.user_id
+        where e.user_id = %s and e.project_id = %s
+        order by e.occurred_at desc
         """,
         (user_id, project_id),
     ).fetchall()

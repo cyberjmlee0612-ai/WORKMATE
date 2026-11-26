@@ -44,7 +44,7 @@ def test_move_keeps_selected_and_deletes_rest(db) -> None:
         result = repo.delete_project(conn, a, project["id"], ProjectDeleteRequest(
             mode="move", expected_task_ids=[t1["id"], t2["id"], t3["id"]], keep_task_ids=[t1["id"], t3["id"]],
         ))
-        assert result == {"moved_tasks": 2, "deleted_tasks": 1}
+        assert result == {"moved_tasks": 2, "deleted_tasks": 1, "lifted_subprojects": 0, "deleted_subprojects": 0}
         assert project_repo.get_project(conn, a, project["id"]) is None
         kept = task_repo.get_task(conn, a, t1["id"])
         assert kept["project_id"] is None  # 개인 업무로 전환
@@ -60,7 +60,7 @@ def test_delete_all(db) -> None:
     with as_user(a):
         project, t1, t2, t3, other = _setup(conn, a)
         result = repo.delete_project(conn, a, project["id"], ProjectDeleteRequest(mode="delete", expected_task_ids=[t1["id"], t2["id"], t3["id"]]))
-        assert result == {"moved_tasks": 0, "deleted_tasks": 3}
+        assert result == {"moved_tasks": 0, "deleted_tasks": 3, "lifted_subprojects": 0, "deleted_subprojects": 0}
         assert project_repo.get_project(conn, a, project["id"]) is None
         assert all(task_repo.get_task(conn, a, t["id"]) is None for t in (t1, t2, t3))
         assert task_repo.get_task(conn, a, other["id"]) is not None
@@ -71,7 +71,7 @@ def test_empty_project(db) -> None:
     with as_user(a):
         project = project_repo.create_project(conn, a, ProjectCreate(name="빈 프로젝트"))
         result = repo.delete_project(conn, a, project["id"], ProjectDeleteRequest(mode="move", expected_task_ids=[]))
-        assert result == {"moved_tasks": 0, "deleted_tasks": 0}
+        assert result == {"moved_tasks": 0, "deleted_tasks": 0, "lifted_subprojects": 0, "deleted_subprojects": 0}
         assert project_repo.get_project(conn, a, project["id"]) is None
 
 

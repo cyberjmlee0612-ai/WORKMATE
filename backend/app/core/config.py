@@ -13,6 +13,17 @@ class Settings(BaseSettings):
     supabase_jwt_secret: str | None = None
     cors_origins: str = "http://localhost:3000"
 
+    # AI 업무 도우미 (2026-11-26 사용자 확정: 우선 Google Gemini API 무료 등급).
+    # 키가 없으면 AI 기능만 꺼지고 나머지는 정상 동작한다.
+    ai_provider: str = "gemini"
+    gemini_api_key: str | None = None
+    # 2026-11-26 실제 호출로 비교: 3.5 Flash-Lite 6초, 3.8 Flash 59초(품질 비슷). 별칭 gemini-flash-latest는 404.
+    gemini_model: str = "gemini-3.5-flash-lite"
+    # 기본 모델이 붐비거나(503) 무료 한도(429)면 차례로 시도할 예비 모델 (쉼표 구분)
+    gemini_fallback_models: str = "gemini-3.1-flash-lite,gemini-3.5-flash"
+    ai_timeout_seconds: int = 90
+    ai_daily_limit: int = 30  # 사용자당 하루 요청 수 (사용자 시간대 기준)
+
     @property
     def supabase_issuer(self) -> str:
         return f"{self.supabase_url.rstrip('/')}/auth/v1"

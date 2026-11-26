@@ -79,7 +79,12 @@ export function ProjectTransitionDialog({ project, action, onClose }: Props) {
         <>모든 업무를 마쳤어요. 완료한 프로젝트는 진행 목록에서 ‘완료’ 구역으로 옮겨져요.</>
       );
   } else if (action === "archive") {
-    description = <>보관하면 진행 목록과 대시보드에서 빠지고 ‘보관함’으로 옮겨져요. 업무와 기록은 그대로 남고 언제든 다시 열 수 있어요.</>;
+    description = (
+      <>
+        보관하면 진행 목록과 대시보드에서 빠지고 ‘보관함’으로 옮겨져요. 업무와 기록은 그대로 남고 언제든 다시 열 수 있어요.
+        {project.subproject_count > 0 && <> 하위 프로젝트도 함께 보관되고, 다시 열면 함께 돌아와요.</>}
+      </>
+    );
   } else {
     description =
       project.status === "archived" ? (

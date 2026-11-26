@@ -11,6 +11,7 @@ import {
   type Task, type TaskInput, type TaskPriority, type TaskStatus,
 } from "@/lib/api/tasks";
 import { invalidateWorkData } from "@/lib/api/invalidate";
+import { buildTree, pathLabel } from "@/lib/projectTree";
 
 const TITLE_MAX = 300;
 const DESCRIPTION_MAX = 2000;
@@ -76,7 +77,11 @@ export function TaskFormDialog({ task, defaultProjectId, defaultDueDate, onClose
 
   const projectsQuery = useQuery({ queryKey: projectKeys.list(), queryFn: listProjects });
   // 진행 중인 프로젝트만 선택지로. 단, 이미 연결된 프로젝트는 완료·보관 상태여도 남겨 둔다.
-  const projectOptions = (projectsQuery.data ?? []).filter((p) => isEditableStatus(p.status) || p.id === fields.project_id);
+  const projectTree = buildTree(projectsQuery.data ?? []);
+  // "상위 › 하위" 경로 이름순
+  const projectOptions = (projectsQuery.data ?? [])
+    .filter((p) => isEditableStatus(p.status) || p.id === fields.project_id)
+    .sort((a, b) => pathLabel(projectTree, a).localeCompare(pathLabel(projectTree, b), "ko"));
   // 목록에 없는 프로젝트(다른 탭에서 삭제 등)에 연결된 업무를 수정할 때도 현재 값이 사라지지 않게 한다
   const missingCurrent =
     fields.project_id && projectsQuery.isSuccess && !projectOptions.some((p) => p.id === fields.project_id)
@@ -191,7 +196,7 @@ export function TaskFormDialog({ task, defaultProjectId, defaultDueDate, onClose
               {projectsQuery.isPending && fields.project_id && <option value={fields.project_id}>{task?.project_name ?? "불러오는 중…"}</option>}
               {projectOptions.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.name}{isEditableStatus(p.status) ? "" : ` (${PROJECT_STATUS_LABEL[p.status]})`}
+                  {pathLabel(projectTree, p)}{isEditableStatus(p.status) ? "" : ` (${PROJECT_STATUS_LABEL[p.status]})`}
                 </option>
               ))}
               {missingCurrent && <option value={missingCurrent.id}>{missingCurrent.name}</option>}

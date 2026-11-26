@@ -2,6 +2,7 @@ from collections.abc import Callable
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from psycopg import Connection
 from psycopg.rows import DictRow
@@ -13,7 +14,10 @@ from app.repositories import project_deletion as deletion_repo
 from app.repositories import project_status as status_repo
 from app.repositories import projects as repo
 from app.schemas.project import ProjectCompleteRequest, ProjectCreate, ProjectOut, ProjectStatusEvent, ProjectUpdate
-from app.schemas.project_deletion import DeletionPreview, ProjectDeleteRequest, ProjectDeleteResult, TasksChangedResponse
+from app.schemas.project_deletion import (
+    DeletionPreview, ProjectBulkDelete, ProjectBulkDeleteResult, ProjectDeleteRequest, ProjectDeleteResult, ProjectMove,
+    ProjectMoveResult, TasksChangedResponse,
+)
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -29,6 +33,18 @@ def list_projects(user: CurrentUserDep, db: UserDbDep) -> list[dict]:
 @router.post("", response_model=ProjectOut, status_code=status.HTTP_201_CREATED)
 def create_project(body: ProjectCreate, user: CurrentUserDep, db: UserDbDep) -> dict:
     return repo.create_project(db, user.id, body)
+
+
+@router.post("/move", response_model=ProjectMoveResult)
+def move_projects(body: ProjectMove, user: CurrentUserDep, db: UserDbDep) -> dict:
+    """여러 프로젝트를 다른 프로젝트 안(또는 최상위)으로 옮긴다. 하나라도 규칙에 걸리면 모두 취소."""
+    return repo.move_projects(db, user.id, body.project_ids, body.parent_id)
+
+
+@router.post("/bulk-delete", response_model=ProjectBulkDeleteResult)
+def delete_projects_bulk(body: ProjectBulkDelete, user: CurrentUserDep, db: UserDbDep) -> dict:
+    """여러 프로젝트 삭제. 업무·하위 처리 방법은 모두에 똑같이 적용하고, 한 트랜잭션으로 처리한다."""
+    return deletion_repo.delete_many(db, user.id, body.project_ids, body.tasks, body.subprojects)
 
 
 @router.get("/{project_id}", response_model=ProjectOut)
@@ -131,3 +147,12 @@ def delete_project(project_id: UUID, body: ProjectDeleteRequest, user: CurrentUs
             tasks=changed.tasks,  # type: ignore[arg-type]
         )
         return JSONResponse(status_code=status.HTTP_409_CONFLICT, content=payload.model_dump(mode="json"))
+    except deletion_repo.SubprojectsChanged as changed:
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content=jsonable_encoder({
+                "detail": "다른 곳에서 하위 프로젝트가 바뀌었습니다. 최신 목록을 다시 확인해 주세요.",
+                "code": "subprojects_changed",
+                "subprojects": changed.subprojects,
+            }),
+        )
