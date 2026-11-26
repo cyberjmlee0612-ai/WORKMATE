@@ -4,10 +4,12 @@ import { use, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, CalendarDays, FolderSearch, Pencil, Trash2 } from "lucide-react";
+import { Archive, ArrowLeft, CalendarDays, CircleCheck, FolderSearch, Pencil, RotateCcw, Trash2 } from "lucide-react";
 import { ApiError } from "@/lib/api/client";
-import { getProject, projectKeys } from "@/lib/api/projects";
-import { formatDate } from "@/lib/format";
+import { getProject, projectKeys, type ProjectAction } from "@/lib/api/projects";
+import { formatDate, formatDateTime } from "@/lib/format";
+import { ProjectTransitionDialog } from "@/components/projects/ProjectTransitionDialog";
+import { ProjectHistory } from "@/components/projects/ProjectHistory";
 import { ProgressBar } from "@/components/projects/ProgressBar";
 import { ProjectStatusBadge } from "@/components/projects/ProjectStatusBadge";
 import { ProjectFormDialog } from "@/components/projects/ProjectFormDialog";
@@ -20,6 +22,7 @@ export default function ProjectDetailPage({ params }: PageProps<"/projects/[id]"
   const router = useRouter();
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [transition, setTransition] = useState<ProjectAction | null>(null);
   const { data: project, isPending, isError, error, refetch, isRefetching } = useQuery({
     queryKey: projectKeys.detail(id),
     queryFn: () => getProject(id),
@@ -60,6 +63,7 @@ export default function ProjectDetailPage({ params }: PageProps<"/projects/[id]"
 
   const start = formatDate(project.start_date);
   const due = formatDate(project.due_date);
+  const isClosed = project.status === "completed" || project.status === "archived";
 
   return (
     <>
@@ -76,7 +80,25 @@ export default function ProjectDetailPage({ params }: PageProps<"/projects/[id]"
             <p className="mt-3 text-sm text-muted">설명이 없습니다.</p>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* 상태 전환: 진행 중이면 완료, 완료·보관이면 다시 열기 (PRD P1) */}
+          {isClosed ? (
+            <button type="button" onClick={() => setTransition("restore")} className="flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-white hover:bg-primary-dark">
+              <RotateCcw size={16} strokeWidth={2} aria-hidden="true" />
+              다시 열기
+            </button>
+          ) : (
+            <button type="button" onClick={() => setTransition("complete")} className="flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-white hover:bg-primary-dark">
+              <CircleCheck size={16} strokeWidth={2} aria-hidden="true" />
+              완료
+            </button>
+          )}
+          {project.status !== "archived" && (
+            <button type="button" onClick={() => setTransition("archive")} className="flex min-h-11 items-center gap-2 rounded-xl border border-border bg-surface px-4 text-sm font-semibold text-primary-dark hover:bg-pale-green">
+              <Archive size={16} strokeWidth={2} aria-hidden="true" />
+              보관
+            </button>
+          )}
           <button type="button" onClick={() => setEditOpen(true)} className="flex min-h-11 items-center gap-2 rounded-xl border border-border bg-surface px-4 text-sm font-semibold text-primary-dark hover:bg-pale-green">
             <Pencil size={16} strokeWidth={2} aria-hidden="true" />
             수정
@@ -87,6 +109,25 @@ export default function ProjectDetailPage({ params }: PageProps<"/projects/[id]"
           </button>
         </div>
       </header>
+
+      {project.status === "completed" && (
+        <p className="mt-5 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-soft-sage bg-pale-green/60 px-4 py-3 text-sm text-primary-dark" role="status">
+          <CircleCheck size={16} strokeWidth={2} aria-hidden="true" />
+          <span className="font-semibold">{formatDateTime(project.completed_at) ?? ""} 완료한 프로젝트예요.</span>
+          {project.open_tasks_at_completion ? (
+            <span className="text-muted">완료 당시 미완료 업무 {project.open_tasks_at_completion}개</span>
+          ) : (
+            <span className="text-muted">모든 업무를 마치고 완료했어요</span>
+          )}
+        </p>
+      )}
+      {project.status === "archived" && (
+        <p className="mt-5 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-border bg-background px-4 py-3 text-sm text-muted" role="status">
+          <Archive size={16} strokeWidth={2} aria-hidden="true" />
+          <span className="font-semibold text-foreground">보관함에 있는 프로젝트예요.</span>
+          {project.archived_at && <span>{formatDateTime(project.archived_at)} 보관</span>}
+        </p>
+      )}
 
       <section className="mt-8 grid gap-4 md:grid-cols-2" aria-label="프로젝트 정보">
         <div className="glass-panel rounded-[20px] p-4 md:p-5 lg:p-6">
@@ -117,8 +158,10 @@ export default function ProjectDetailPage({ params }: PageProps<"/projects/[id]"
       </section>
 
       <ProjectTasksSection projectId={project.id} cancelledCount={project.cancelled_tasks} />
+      <ProjectHistory projectId={project.id} />
 
       {editOpen && <ProjectFormDialog project={project} onClose={() => setEditOpen(false)} />}
+      {transition && <ProjectTransitionDialog project={project} action={transition} onClose={() => setTransition(null)} />}
       {deleteOpen && <DeleteProjectDialog project={project} onClose={() => setDeleteOpen(false)} onDeleted={() => router.replace("/projects")} />}
     </>
   );

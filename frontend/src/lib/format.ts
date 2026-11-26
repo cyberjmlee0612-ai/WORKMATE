@@ -11,6 +11,15 @@ export function formatDate(value: string | null | undefined): string | null {
   return dateFormatter.format(new Date(year, month - 1, day));
 }
 
+const dateTimeFormatter = new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "long", day: "numeric", hour: "numeric", minute: "2-digit" });
+
+/** ISO 시각(timestamptz) → 사용자 시간대 기준 "2026년 11월 24일 오후 3:20" */
+export function formatDateTime(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : dateTimeFormatter.format(date);
+}
+
 /** 분 → "1시간 30분" */
 export function formatMinutes(minutes: number | null | undefined): string | null {
   if (!minutes || minutes <= 0) return null;

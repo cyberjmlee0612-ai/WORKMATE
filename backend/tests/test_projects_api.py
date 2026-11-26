@@ -27,6 +27,7 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
         return {
             "id": uuid4(), **data.model_dump(), "created_at": "2026-11-24T00:00:00Z", "updated_at": "2026-11-24T00:00:00Z",
             "total_tasks": 0, "completed_tasks": 0, "cancelled_tasks": 0, "progress": 0,
+            "completed_at": None, "open_tasks_at_completion": None, "archived_at": None,
         }
 
     monkeypatch.setattr(projects.repo, "create_project", fake_create)
@@ -121,6 +122,36 @@ def test_delete_tasks_changed_409(client: TestClient, monkeypatch: pytest.Monkey
     res = client.post(f"/projects/{uuid4()}/delete", json={"mode": "delete", "expected_task_ids": []})
     assert res.status_code == 409
     assert res.json()["code"] == "tasks_changed" and res.json()["tasks"] == []
+
+
+@pytest.mark.parametrize("payload", [{}, {"confirmed_open_tasks": -1}, {"confirmed_open_tasks": "a"}, {"confirmed_open_tasks": 0, "x": 1}])
+def test_complete_request_validation(client: TestClient, payload: dict[str, Any]) -> None:
+    assert client.post(f"/projects/{uuid4()}/complete", json=payload).status_code == 422
+
+
+def test_complete_open_tasks_changed_409(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    def raise_changed(*args: Any, **kwargs: Any) -> None:
+        raise projects.status_repo.OpenTasksChanged(3)
+
+    monkeypatch.setattr(projects.status_repo, "complete", raise_changed)
+    res = client.post(f"/projects/{uuid4()}/complete", json={"confirmed_open_tasks": 1})
+    assert res.status_code == 409
+    assert res.json()["code"] == "open_tasks_changed" and res.json()["open_tasks"] == 3
+
+
+def test_invalid_transition_409(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    def raise_invalid(*args: Any, **kwargs: Any) -> None:
+        raise projects.status_repo.InvalidTransition("이미 진행 중인 프로젝트입니다.")
+
+    monkeypatch.setattr(projects.status_repo, "restore", raise_invalid)
+    res = client.post(f"/projects/{uuid4()}/restore")
+    assert res.status_code == 409
+    assert res.json() == {"detail": "이미 진행 중인 프로젝트입니다.", "code": "invalid_transition"}
+
+
+def test_transition_missing_project_404(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(projects.status_repo, "archive", lambda *a, **k: False)
+    assert client.post(f"/projects/{uuid4()}/archive").status_code == 404
 
 
 def test_invalid_uuid_returns_422(client: TestClient) -> None:

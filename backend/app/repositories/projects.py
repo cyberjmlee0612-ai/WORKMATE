@@ -6,6 +6,7 @@ from uuid import UUID
 from psycopg import Connection, sql
 from psycopg.rows import DictRow
 
+from app.core.errors import FieldError
 from app.schemas.project import ProjectCreate, ProjectUpdate, check_date_order
 
 # 진행률 = completed 업무 수 ÷ 제외(cancelled)되지 않은 업무 수 × 100, 정수 내림. 업무가 없으면 0.
@@ -16,7 +17,11 @@ select
   coalesce(t.total, 0)::int as total_tasks,
   coalesce(t.completed, 0)::int as completed_tasks,
   coalesce(t.cancelled, 0)::int as cancelled_tasks,
-  coalesce(t.completed * 100 / nullif(t.total, 0), 0)::int as progress
+  coalesce(t.completed * 100 / nullif(t.total, 0), 0)::int as progress,
+  -- 완료 정보는 현재 '완료' 상태일 때만, 보관 시각은 현재 '보관' 상태일 때만 의미가 있다
+  case when p.status = 'completed' then c.occurred_at end as completed_at,
+  case when p.status = 'completed' then c.open_tasks end as open_tasks_at_completion,
+  case when p.status = 'archived' then a.occurred_at end as archived_at
 from public.projects p
 left join lateral (
   select
@@ -26,6 +31,16 @@ left join lateral (
   from public.tasks
   where tasks.project_id = p.id and tasks.user_id = p.user_id
 ) t on true
+left join lateral (
+  select e.occurred_at, e.open_tasks from public.project_status_events e
+  where e.project_id = p.id and e.user_id = p.user_id and e.action = 'complete'
+  order by e.occurred_at desc limit 1
+) c on true
+left join lateral (
+  select e.occurred_at from public.project_status_events e
+  where e.project_id = p.id and e.user_id = p.user_id and e.action = 'archive'
+  order by e.occurred_at desc limit 1
+) a on true
 """
 
 
@@ -64,11 +79,14 @@ def update_project(db: Connection[DictRow], user_id: UUID, project_id: UUID, dat
 
     # 동시에 다른 요청이 날짜를 바꾸지 못하게 행을 잠그고 기존 값과 합쳐 검사
     current = db.execute(
-        "select start_date, due_date from public.projects where user_id = %s and id = %s for update",
+        "select status, start_date, due_date from public.projects where user_id = %s and id = %s for update",
         (user_id, project_id),
     ).fetchone()
     if current is None:
         return None
+    # 완료·보관 상태는 이력을 남기는 복원 기능으로만 바꾼다 (수정으로 바꾸면 이력이 빠진다)
+    if "status" in changes and current["status"] in ("completed", "archived"):
+        raise FieldError("status", "완료·보관한 프로젝트는 ‘복원’으로 다시 열 수 있습니다.")
     check_date_order(changes.get("start_date", current["start_date"]), changes.get("due_date", current["due_date"]))
 
     if changes:

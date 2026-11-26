@@ -83,11 +83,13 @@ def delete_project(db: Connection[DictRow], user_id: UUID, project_id: UUID, req
             (user_id, project_id, list(keep_ids)),
         ).rowcount
 
-    # 4) 남은 소속 업무 삭제 → 5) 프로젝트 삭제
+    # 4) 남은 소속 업무 삭제 → 5) 상태 이력 삭제 → 6) 프로젝트 삭제
     deleted = db.execute(
         "delete from public.tasks where user_id = %s and project_id = %s",
         (user_id, project_id),
     ).rowcount
+    # 이력 FK는 CASCADE지만 PRD 원칙대로 자동 CASCADE에만 의존하지 않고 명시적으로 지운다
+    db.execute("delete from public.project_status_events where user_id = %s and project_id = %s", (user_id, project_id))
     db.execute("delete from public.projects where user_id = %s and id = %s", (user_id, project_id))
 
     return {"moved_tasks": moved, "deleted_tasks": deleted}

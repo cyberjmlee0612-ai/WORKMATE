@@ -2,7 +2,7 @@ from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 ProjectStatus = Literal["planning", "in_progress", "review", "completed", "archived"]
 # 생성·수정 폼에서 직접 고를 수 있는 상태. completed/archived는 P1 완료·보관 흐름에서만 바꾼다.
@@ -99,3 +99,25 @@ class ProjectOut(BaseModel):
     completed_tasks: int
     cancelled_tasks: int
     progress: int  # 0–100, 내림 (99.6% → 99%)
+    completed_at: datetime | None  # 현재 완료 상태일 때: 마지막 완료 시각
+    open_tasks_at_completion: int | None  # 현재 완료 상태일 때: 완료 당시 미완료 업무 수
+    archived_at: datetime | None  # 현재 보관 상태일 때: 마지막 보관 시각
+
+
+ProjectAction = Literal["complete", "archive", "restore"]
+
+
+class ProjectCompleteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # 확인 창에서 사용자에게 보여준 미완료 업무 수. 실제 수와 다르면 409로 다시 확인시킨다.
+    confirmed_open_tasks: int = Field(ge=0)
+
+
+class ProjectStatusEvent(BaseModel):
+    id: UUID
+    action: ProjectAction
+    from_status: ProjectStatus
+    to_status: ProjectStatus
+    open_tasks: int | None
+    occurred_at: datetime

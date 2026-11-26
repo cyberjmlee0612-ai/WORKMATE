@@ -2,22 +2,24 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { FolderKanban, Plus } from "lucide-react";
+import { Archive, ChevronDown, FolderKanban, Plus } from "lucide-react";
 import { listProjects, projectKeys } from "@/lib/api/projects";
 import { ProjectCard } from "@/components/projects/ProjectCard";
 import { ProjectFormDialog } from "@/components/projects/ProjectFormDialog";
 import { CardSkeleton, EmptyState, ErrorState } from "@/components/common/QueryStates";
 
-// completed는 진행 목록에서 분리한다 (PRD §3).
-// archived의 표시 위치는 PRD 미결정 → 임시로 완료와 같은 구역에 함께 표시한다.
+// 진행 중 → 완료 → 보관함(기본 접힘) 순으로 나눈다 (PRD §3, 보관 위치는 2026-11-24 사용자 확정)
 const CLOSED = new Set(["completed", "archived"]);
 
 export default function ProjectsPage() {
   const [formOpen, setFormOpen] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
   const { data, isPending, isError, error, refetch, isRefetching } = useQuery({ queryKey: projectKeys.list(), queryFn: listProjects });
 
   const active = data?.filter((p) => !CLOSED.has(p.status)) ?? [];
-  const closed = data?.filter((p) => CLOSED.has(p.status)) ?? [];
+  const completed = data?.filter((p) => p.status === "completed") ?? [];
+  const archived = data?.filter((p) => p.status === "archived") ?? [];
+  const closed = [...completed, ...archived];
 
   const createButton = (
     <button type="button" onClick={() => setFormOpen(true)} className="flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 font-semibold text-white hover:bg-primary-dark">
@@ -67,15 +69,41 @@ export default function ProjectsPage() {
         </div>
       </section>
 
-      {closed.length > 0 && (
-        <section className="surface-card mt-6 rounded-[20px] p-4 md:p-5 lg:p-6" aria-labelledby="closed-heading">
+      {completed.length > 0 && (
+        <section className="surface-card mt-6 rounded-[20px] p-4 md:p-5 lg:p-6" aria-labelledby="completed-heading">
           <div className="flex flex-wrap items-end justify-between gap-3">
-            <h2 id="closed-heading" className="text-xl font-bold text-primary-dark">완료·보관된 프로젝트</h2>
-            <span className="text-sm font-medium text-muted">{closed.length}개</span>
+            <h2 id="completed-heading" className="text-xl font-bold text-primary-dark">완료한 프로젝트</h2>
+            <span className="text-sm font-medium text-muted">{completed.length}개</span>
           </div>
           <div className="mt-6 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {closed.map((project) => <ProjectCard key={project.id} project={project} />)}
+            {completed.map((project) => <ProjectCard key={project.id} project={project} />)}
           </div>
+        </section>
+      )}
+
+      {archived.length > 0 && (
+        <section className="mt-6 rounded-[20px] border border-border bg-background/60 p-4 md:p-5 lg:p-6" aria-labelledby="archived-heading">
+          <h2 id="archived-heading">
+            <button
+              type="button"
+              onClick={() => setArchiveOpen((v) => !v)}
+              aria-expanded={archiveOpen}
+              aria-controls="archived-projects"
+              className="flex min-h-11 w-full items-center justify-between gap-3 text-left"
+            >
+              <span className="flex items-center gap-2 text-lg font-bold text-muted">
+                <Archive size={20} strokeWidth={2} aria-hidden="true" />
+                보관함
+                <span className="font-geist text-sm font-medium">({archived.length})</span>
+              </span>
+              <ChevronDown size={20} strokeWidth={2} aria-hidden="true" className={`text-muted transition-transform ${archiveOpen ? "rotate-180" : ""}`} />
+            </button>
+          </h2>
+          {archiveOpen && (
+            <div id="archived-projects" className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {archived.map((project) => <ProjectCard key={project.id} project={project} />)}
+            </div>
+          )}
         </section>
       )}
 
