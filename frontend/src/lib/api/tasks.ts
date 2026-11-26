@@ -46,6 +46,8 @@ export type Task = {
   cancel_reason: string | null;
   /** 실제 기록 시간 합계(분, 끝난 기록만). 진행 중인 타이머는 포함하지 않는다. */
   tracked_minutes: number;
+  /** 시간표에 배치한 계획 시간 합계(분) */
+  planned_minutes: number;
   created_at: string;
   updated_at: string;
 };

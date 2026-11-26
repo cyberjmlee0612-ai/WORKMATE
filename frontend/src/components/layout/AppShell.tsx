@@ -21,7 +21,7 @@ const navigation: NavItem[] = [
   { label: "내 프로젝트", icon: FolderKanban, href: "/projects" },
   { label: "업무 관리", icon: ListTodo, href: "/tasks" },
   { label: "AI 업무 도우미", icon: Sparkles, ai: true },
-  { label: "캘린더", icon: CalendarDays },
+  { label: "캘린더", icon: CalendarDays, href: "/calendar" },
   { label: "리포트", icon: ChartNoAxesCombined },
   { label: "설정", icon: Settings2 },
 ];
@@ -88,7 +88,12 @@ export function AppShell({ children }: { children: ReactNode }) {
         <MobileItem icon={ListTodo} label="업무 관리" href="/tasks" active={isActive(pathname, "/tasks")} />
         <MobileItem icon={Sparkles} label="AI 어시스턴트" />
         <button type="button" onClick={() => setMoreOpen((value) => !value)} className={`flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-xl text-muted ${moreOpen ? "bg-pale-green text-primary-dark" : ""}`} aria-expanded={moreOpen} aria-controls="mobile-more" aria-label="더보기 메뉴" title="더보기"><MoreHorizontal size={20} strokeWidth={2} aria-hidden="true" /><span className="truncate text-[11px]">더보기</span></button>
-        {moreOpen && <div id="mobile-more" className="surface-card absolute bottom-full right-3 mb-2 w-44 rounded-2xl p-2" role="group" aria-label="더보기 메뉴">{navigation.slice(4).map(({ label, icon: Icon }) => <div key={label} className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm text-primary-dark" title={`${label} 화면 준비 중`}><Icon size={20} strokeWidth={2} aria-hidden="true" />{label}</div>)}</div>}
+        {moreOpen && <div id="mobile-more" className="surface-card absolute bottom-full right-3 mb-2 w-44 rounded-2xl p-2" role="group" aria-label="더보기 메뉴">{navigation.slice(4).map(({ label, icon: Icon, href }) =>
+          href ? (
+            <Link key={label} href={href} onClick={() => setMoreOpen(false)} aria-current={isActive(pathname, href) ? "page" : undefined} className={`flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm text-primary-dark hover:bg-pale-green ${isActive(pathname, href) ? "bg-pale-green font-semibold" : ""}`}><Icon size={20} strokeWidth={2} aria-hidden="true" />{label}</Link>
+          ) : (
+            <div key={label} className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm text-muted" title={`${label} 화면 준비 중`}><Icon size={20} strokeWidth={2} aria-hidden="true" />{label}</div>
+          ))}</div>}
       </nav>
     </div>
   );

@@ -143,5 +143,6 @@ class TaskOut(BaseModel):
     cancelled_at: datetime | None
     cancel_reason: str | None
     tracked_minutes: int = 0  # 실제 기록 시간 합계 (끝난 기록만)
+    planned_minutes: int = 0  # 시간표에 배치한 계획 시간 합계
     created_at: datetime
     updated_at: datetime

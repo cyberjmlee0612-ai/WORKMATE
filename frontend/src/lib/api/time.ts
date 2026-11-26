@@ -30,11 +30,43 @@ export const NOTE_MAX = 500;
 
 export type TimeEntryFilters = { task_id?: string; start?: string; end?: string };
 
+/** 시간표에 배치한 계획 블록. 같은 업무를 여러 번 배치할 수 있고 계획끼리는 겹쳐도 된다. */
+export type TimePlan = {
+  id: string;
+  task_id: string;
+  task_title: string;
+  task_status: string;
+  project_id: string | null;
+  project_name: string | null;
+  starts_at: string;
+  ends_at: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TimeRange = { start: string; end: string };
+
 export const timeKeys = {
   all: ["time"] as const,
   timer: () => [...timeKeys.all, "timer"] as const,
   entries: (filters: TimeEntryFilters) => [...timeKeys.all, "entries", filters] as const,
+  plans: (range: TimeRange) => [...timeKeys.all, "plans", range] as const,
 };
+
+/** 날짜별 메모 (시간표 일간 보기). 업무 데이터와 무관하므로 invalidateWorkData 대상(timeKeys)과 분리한다. */
+export type DailyNote = { note_date: string; content: string; updated_at: string | null };
+export const NOTE_CONTENT_MAX = 5000;
+export const noteKeys = { day: (date: string) => ["daily-note", date] as const };
+export const getDailyNote = (date: string) => apiFetch<DailyNote>(`/daily-notes/${encodeURIComponent(date)}`);
+export const saveDailyNote = (date: string, content: string) =>
+  apiFetch<DailyNote>(`/daily-notes/${encodeURIComponent(date)}`, { method: "PUT", body: JSON.stringify({ content }) });
+
+export const listTimePlans = (range: TimeRange) => apiFetch<TimePlan[]>(`/time-plans?${new URLSearchParams(range).toString()}`);
+export const createTimePlan = (input: { task_id: string; starts_at: string; ends_at: string }) =>
+  apiFetch<TimePlan>("/time-plans", { method: "POST", body: JSON.stringify(input) });
+export const updateTimePlan = (id: string, input: { starts_at?: string; ends_at?: string }) =>
+  apiFetch<TimePlan>(`/time-plans/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(input) });
+export const deleteTimePlan = (id: string) => apiFetch<void>(`/time-plans/${encodeURIComponent(id)}`, { method: "DELETE" });
 
 export const getTimer = () => apiFetch<TimerState>("/timer");
 export const startTimer = (taskId: string) =>

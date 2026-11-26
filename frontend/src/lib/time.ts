@@ -24,6 +24,30 @@ export function useNowSeconds(): number | null {
   return useSyncExternalStore(subscribeSecond, () => Math.floor(Date.now() / 1000), () => null);
 }
 
+function subscribeMinute(onChange: () => void) {
+  const id = window.setInterval(onChange, 15_000);
+  return () => window.clearInterval(id);
+}
+
+/** 분 단위 현재 시각(epoch 분). 시간표의 현재 시각 선·진행 중 블록용. 서버 렌더링 중에는 null. */
+export function useNowMinute(): number | null {
+  return useSyncExternalStore(subscribeMinute, () => Math.floor(Date.now() / 60_000), () => null);
+}
+
+/** 브라우저 시간대 기준 날짜 계산 (Date 생성자가 넘치는 일·분을 알아서 넘긴다) */
+export const startOfDay = (date: Date) => new Date(date.getFullYear(), date.getMonth(), date.getDate());
+export const addDays = (date: Date, days: number) => new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
+/** 일요일 시작 주 (2026-11-26 사용자 확정) */
+export const startOfWeek = (date: Date) => addDays(startOfDay(date), -date.getDay());
+
+/** "YYYY-MM-DD" → 그날 0시 Date. 잘못된 값이면 null */
+export function parseDateParam(value: string | null): Date | null {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const [y, m, d] = value.split("-").map(Number);
+  const date = new Date(y, m - 1, d);
+  return date.getMonth() === m - 1 && date.getDate() === d ? date : null;
+}
+
 /** 경과 시간 → "12:03" / "1:02:03" */
 export function formatElapsed(ms: number): string {
   const total = Math.max(0, Math.floor(ms / 1000));

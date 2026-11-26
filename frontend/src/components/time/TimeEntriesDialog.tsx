@@ -75,7 +75,7 @@ export function TimeEntriesDialog({ task, onClose }: Props) {
         {editing ? (
           <EntryForm
             key={editing === "new" ? "new" : editing.id}
-            task={task}
+            taskId={task.id}
             entry={editing === "new" ? null : editing}
             onBusy={setBusy}
             onDone={() => setEditing(null)}
@@ -176,7 +176,8 @@ function EntryRow({ entry, editing, onEdit, onBusy }: { entry: TimeEntry; editin
 
 type FormErrors = Partial<Record<"started_at" | "ended_at" | "note" | "_form", string>>;
 
-function EntryForm({ task, entry, onBusy, onDone }: { task: Task; entry: TimeEntry | null; onBusy: (busy: boolean) => void; onDone: () => void }) {
+/** 기록 추가·수정 폼. 시간표의 실제 기록 수정 창에서도 쓴다. */
+export function EntryForm({ taskId, entry, onBusy, onDone }: { taskId: string; entry: TimeEntry | null; onBusy: (busy: boolean) => void; onDone: () => void }) {
   const queryClient = useQueryClient();
   const formId = useId();
   const running = entry !== null && entry.ended_at === null;
@@ -198,7 +199,7 @@ function EntryForm({ task, entry, onBusy, onDone }: { task: Task; entry: TimeEnt
     mutationFn: (payload: TimeEntryUpdateInput) =>
       entry
         ? updateTimeEntry(entry.id, payload)
-        : createTimeEntry({ task_id: task.id, started_at: payload.started_at!, ended_at: payload.ended_at!, note: payload.note ?? null }),
+        : createTimeEntry({ task_id: taskId, started_at: payload.started_at!, ended_at: payload.ended_at!, note: payload.note ?? null }),
     onMutate: () => onBusy(true),
     onSettled: () => onBusy(false),
     onSuccess: () => {

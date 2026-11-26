@@ -5,7 +5,8 @@ import type { Task } from "@/lib/api/tasks";
 import { useTimerControls } from "./useTimerControls";
 
 type Props = {
-  task: Task;
+  /** 업무 목록·시간표 패널에서 함께 쓰므로 필요한 필드만 받는다 */
+  task: Pick<Task, "id" | "title" | "status">;
   onError: (message: string | null) => void;
   onNotice: (message: string | null) => void;
 };

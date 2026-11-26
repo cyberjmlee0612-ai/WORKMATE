@@ -21,7 +21,13 @@ select
     select floor(sum(extract(epoch from e.ended_at - e.started_at)) / 60)::int
     from public.task_time_entries e
     where e.task_id = t.id and e.user_id = t.user_id and e.ended_at is not null
-  ), 0) as tracked_minutes
+  ), 0) as tracked_minutes,
+  -- 시간표에 배치한 계획 시간 합계(분)
+  coalesce((
+    select floor(sum(extract(epoch from pl.ends_at - pl.starts_at)) / 60)::int
+    from public.task_time_plans pl
+    where pl.task_id = t.id and pl.user_id = t.user_id
+  ), 0) as planned_minutes
 from public.tasks t
 left join public.projects p on p.id = t.project_id and p.user_id = t.user_id
 """
