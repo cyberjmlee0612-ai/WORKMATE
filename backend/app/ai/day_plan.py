@@ -1,6 +1,7 @@
 """AI 하루 계획 제안 (기획서 3-4 '하루 업무 계획 제안', 2026-11-26 사용자 확정).
 
-- 일할 시간대는 요청마다 받는다(기본 09:00–18:00), 쉬는 시간(기본 12:00–13:00)은 비운다.
+- 일할 시간대(여러 개)와 피할 시간(수업·고정 일정·쉬는 시간)은 요청마다 받는다.
+  화면은 설정의 요일별 반복 블록으로 미리 채운다 (2026-11-26 사용자 확정: 일·공부 시간 블록 안에만 배치).
 - 그날 이미 있는 계획·실제 기록과 겹치지 않게, 완료·제외하지 않은 업무로 시간표 블록을 제안한다.
 - AI 제안은 저장하지 않는다. 사용자가 고르고 고친 것만 /time-plans/bulk로 저장한다.
 - AI 답은 믿지 않고 다시 정리한다: 있는 업무인지, 시간대 안인지, 10분 단위, 서로·기존 일정과 겹치지 않는지.
@@ -43,7 +44,7 @@ SYSTEM_PROMPT = """너는 한국어 업무 관리 서비스 WORKMATE의 하루 �
 사용자의 남은 업무를 보고, 주어진 날짜의 시간표에 업무 블록을 배치한다.
 
 규칙:
-- 반드시 '일할 시간' 안에만, '쉬는 시간'과 '이미 있는 일정'을 피해서 배치한다.
+- 반드시 '일할 시간' 구간 안에만, '피할 시간'과 '이미 있는 일정'을 피해서 배치한다. 한 블록은 한 구간 안에 들어가야 한다.
 - 블록끼리 겹치지 않게, 시작·끝은 10분 단위(HH:MM, 24시간)로.
 - 마감이 지났거나 가까운 업무, 우선순위가 높은 업무를 먼저, 집중이 필요한 일은 오전에.
 - 블록 길이는 예상 시간에서 이미 계획·기록한 시간을 뺀 만큼을 기준으로, 한 블록은 보통 30분~2시간. 긴 업무는 나눠도 된다.
@@ -87,16 +88,19 @@ def _busy_intervals(db: Connection[DictRow], user_id: UUID, day_start: datetime,
 
 def build_prompt(
     day: date,
-    window: tuple[int, int],
-    lunch: tuple[int, int] | None,
+    windows: list[tuple[int, int]],
+    blocked: list[tuple[int, int, str]],
     not_before: int | None,
     busy: list[tuple[int, int, str]],
     candidates: list[dict[str, Any]],
     note: str | None,
 ) -> str:
-    lines = [f"날짜: {day.isoformat()} ({WEEKDAYS[day.weekday()]}요일)", f"일할 시간: {_hhmm(window[0])}–{_hhmm(window[1])}"]
-    if lunch:
-        lines.append(f"쉬는 시간: {_hhmm(lunch[0])}–{_hhmm(lunch[1])}")
+    lines = [
+        f"날짜: {day.isoformat()} ({WEEKDAYS[day.weekday()]}요일)",
+        "일할 시간: " + ", ".join(f"{_hhmm(a)}–{_hhmm(b)}" for a, b in windows),
+    ]
+    if blocked:
+        lines.append("피할 시간: " + ", ".join(f"{_hhmm(a)}–{_hhmm(b)} {label}" for a, b, label in blocked))
     if not_before is not None:
         lines.append(f"지금 시각: {_hhmm(not_before)} (이 시각 이후로만 배치)")
     lines.append("이미 있는 일정:" if busy else "이미 있는 일정: 없음")
@@ -118,16 +122,14 @@ def build_prompt(
 def clean(
     result: AiDayPlan,
     candidates: list[dict[str, Any]],
-    window: tuple[int, int],
-    lunch: tuple[int, int] | None,
+    windows: list[tuple[int, int]],
+    blocked: list[tuple[int, int, str]],
     not_before: int | None,
     busy: list[tuple[int, int, str]],
 ) -> list[dict[str, Any]]:
-    """AI 블록을 검증해 쓸 수 있는 것만 남긴다. 10분 단위로 맞추고, 범위를 벗어나거나 겹치면 버린다."""
-    taken: list[tuple[int, int]] = [(a, b) for a, b, _ in busy]
-    if lunch:
-        taken.append(lunch)
-    earliest = max(window[0], not_before or 0)
+    """AI 블록을 검증해 쓸 수 있는 것만 남긴다. 10분 단위로 맞추고, 시작 시각이 든 일할 시간 구간 안으로 자르고,
+    피할 시간·기존 일정·앞서 받은 블록과 겹치면 버린다."""
+    taken: list[tuple[int, int]] = [(a, b) for a, b, _ in busy] + [(a, b) for a, b, _ in blocked]
     accepted: list[dict[str, Any]] = []
     for block in result.blocks:
         ref = block.task.strip().upper()
@@ -135,8 +137,12 @@ def clean(
         start, end = _parse_hhmm(block.start), _parse_hhmm(block.end)
         if not 0 <= index < len(candidates) or start is None or end is None:
             continue
-        start = max(earliest, round(start / SNAP) * SNAP)
-        end = min(window[1], round(end / SNAP) * SNAP)
+        start, end = round(start / SNAP) * SNAP, round(end / SNAP) * SNAP
+        window = next((w for w in windows if w[0] <= start < w[1]), None)
+        if window is None:
+            continue
+        start = max(start, not_before or 0)
+        end = min(end, window[1])
         if end - start < MIN_BLOCK or any(_overlaps((start, end), t) for t in taken):
             continue
         taken.append((start, end))
@@ -151,8 +157,8 @@ def suggest(
     *,
     day: date,
     tz: str,
-    window: tuple[int, int],
-    lunch: tuple[int, int] | None,
+    windows: list[tuple[int, int]],
+    blocked: list[tuple[int, int, str]],
     note: str | None,
 ) -> dict[str, Any]:
     zone = ZoneInfo(tz)
@@ -172,9 +178,9 @@ def suggest(
     elif day < local_now.date():
         not_before = None  # 지난 날짜도 계획(기록용)은 허용
 
-    prompt = build_prompt(day, window, lunch, not_before, busy, candidates, note)
+    prompt = build_prompt(day, windows, blocked, not_before, busy, candidates, note)
     result = provider.generate(SYSTEM_PROMPT, prompt, AiDayPlan)
-    blocks = clean(result, candidates, window, lunch, not_before, busy)
+    blocks = clean(result, candidates, windows, blocked, not_before, busy)
     return {
         "summary": result.summary.strip()[:500],
         "blocks": [

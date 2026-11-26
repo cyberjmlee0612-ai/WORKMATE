@@ -258,17 +258,22 @@ def test_day_plan_clean_rules() -> None:
         _blk("T2", "15:00", "15:05"),   # 10분 미만 → 버림
         _blk("T2", "aa", "bb"),         # 형식 오류 → 버림
         _blk("T2", "16:00", "17:00"),   # 이미 있는 일정과 겹침 → 버림
+        _blk("T2", "18:10", "19:30"),   # 시작이 일할 시간 구간 밖 → 버림
+        _blk("T3", "19:00", "22:00"),   # 두 번째 구간 끝(21:00)으로 자름
+        _blk("T3", "20:00", "20:50"),   # 앞 블록(19:00–21:00)과 겹침 → 버림
     ])
     busy = [(16 * 60 + 30, 17 * 60, "회의 (계획)")]
-    blocks = day_plan.clean(result, _CANDS, (9 * 60, 18 * 60), (12 * 60, 13 * 60), None, busy)
+    windows = [(9 * 60, 18 * 60), (19 * 60, 21 * 60)]
+    blocked = [(12 * 60, 13 * 60, "점심")]
+    blocks = day_plan.clean(result, _CANDS, windows, blocked, None, busy)
     assert [(b["task"]["title"], b["start"], b["end"]) for b in blocks] == [
-        ("업무0", 540, 600), ("업무2", 780, 850), ("업무0", 1050, 1080),
+        ("업무0", 540, 600), ("업무2", 780, 850), ("업무0", 1050, 1080), ("업무2", 1140, 1260),
     ]
 
 
 def test_day_plan_not_before_now() -> None:
     result = AiDayPlan(summary="", blocks=[_blk("T1", "09:00", "10:00"), _blk("T2", "10:30", "11:30")])
-    blocks = day_plan.clean(result, _CANDS, (540, 1080), None, 600, [])
+    blocks = day_plan.clean(result, _CANDS, [(540, 1080)], [], 600, [])
     # 지금이 10:00이면 09:00–10:00 블록은 10:00–10:00(0분)으로 잘려 버려지고, 10:30 블록만 남는다
     assert [(b["start"], b["end"]) for b in blocks] == [(630, 690)]
 
@@ -293,8 +298,14 @@ def test_day_plan_endpoint_uses_real_tasks_and_busy_times(db, monkeypatch) -> No
         start = dt.combine(day, dt.min.time(), tzinfo=ZoneInfo("Asia/Seoul"))
         plan_repo.create_plan(conn, a, TimePlanCreate(task_id=later["id"], starts_at=start + timedelta(hours=14, minutes=30), ends_at=start + timedelta(hours=15)))
 
-        out = ai_api.post_day_plan(ai_api.DayPlanRequest(date=day, tz="Asia/Seoul"), _user(a), conn)
+        body = ai_api.DayPlanRequest(
+            date=day, tz="Asia/Seoul",
+            windows=[ai_api.TimeRange(start="13:00", end="18:00"), ai_api.TimeRange(start="09:00", end="13:00")],  # 맞닿은 구간은 합친다
+            blocked=[ai_api.TimeRange(start="12:00", end="13:00", label="점심")],
+        )
+        out = ai_api.post_day_plan(body, _user(a), conn)
         prompt = fake.prompts[0]
+        assert "일할 시간: 09:00–18:00" in prompt and "피할 시간: 12:00–13:00 점심" in prompt
         assert "T1 | 급한 일" in prompt and "끝난 일" not in prompt and "14:30–15:00 나중 일 (계획)" in prompt
         # T2 10:00 블록은 T1과 겹치고, 14:00 블록은 기존 계획과 겹쳐 버려진다
         assert [(b["task_title"], b["starts_at"].hour, b["ends_at"].minute) for b in out["blocks"]] == [("급한 일", 9, 30)]
@@ -308,5 +319,8 @@ def test_day_plan_endpoint_uses_real_tasks_and_busy_times(db, monkeypatch) -> No
 
 
 def test_day_plan_request_validation(client: TestClient) -> None:
-    assert "work_start" in client.post("/ai/day-plan", json={"date": "2026-12-01", "work_start": "9시"}).json()["errors"]
-    assert "note" in client.post("/ai/day-plan", json={"date": "2026-12-01", "note": "가" * 301}).json()["errors"]
+    w = [{"start": "09:00", "end": "18:00"}]
+    assert "windows" in client.post("/ai/day-plan", json={"date": "2026-12-01"}).json()["errors"]
+    assert client.post("/ai/day-plan", json={"date": "2026-12-01", "windows": [{"start": "9시", "end": "18:00"}]}).status_code == 422
+    assert "note" in client.post("/ai/day-plan", json={"date": "2026-12-01", "windows": w, "note": "가" * 301}).json()["errors"]
+    assert client.post("/ai/day-plan", json={"date": "2026-12-01", "windows": w, "work_start": "09:00"}).status_code == 422  # 예전 형식 거부

@@ -15,8 +15,12 @@ import { TaskFormDialog } from "@/components/tasks/TaskFormDialog";
 import { TaskList, TaskListSkeleton } from "@/components/tasks/TaskList";
 import { CardSkeleton, EmptyState, ErrorState } from "@/components/common/QueryStates";
 import { dashboardKeys, getDashboard } from "@/lib/api/dashboard";
+import { getSettings, settingsKeys } from "@/lib/api/settings";
 import type { Task } from "@/lib/api/tasks";
 import { useToday, userTimeZone } from "@/lib/date";
+import { useNowMinute } from "@/lib/time";
+import { cheerOfDay, greetingFor } from "@/lib/cheers";
+import { Briefing } from "@/components/dashboard/Briefing";
 
 const headerDateFormatter = new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric" });
 
@@ -30,6 +34,7 @@ const pad = (n: number) => String(n).padStart(2, "0");
 
 export default function HomePage() {
   const today = useToday();
+  const nowMinute = useNowMinute();
   const [projectFormOpen, setProjectFormOpen] = useState(false);
   const [taskFormOpen, setTaskFormOpen] = useState(false);
 
@@ -39,6 +44,8 @@ export default function HomePage() {
     queryFn: () => getDashboard(today!, tz),
     enabled: today !== null, // '오늘'은 브라우저에서만 알 수 있다
   });
+  // 표시 이름 (설정). 불러오지 못해도 인사말은 이름 없이 보여 준다
+  const displayName = useQuery({ queryKey: settingsKeys.all, queryFn: getSettings }).data?.display_name;
   const loading = isPending;
   const kpi = data?.kpi;
 
@@ -55,12 +62,15 @@ export default function HomePage() {
         <div className="min-w-0">
           {/* 실제 오늘 날짜. 확인 전(서버 렌더링 중)에는 같은 높이의 빈 줄을 둔다 */}
           <p className="font-geist min-h-4 text-xs font-semibold uppercase tracking-[0.22em] text-primary">{today ? formatHeaderDate(today) : " "}</p>
-          <h1 className="mt-3 text-[28px] font-bold leading-tight text-primary-dark md:text-[32px]">안녕하세요! <span aria-hidden="true">👋</span></h1>
-          <p className="mt-2 text-sm text-muted md:text-base">오늘도 WORKMATE와 함께 차근차근 시작해 봐요.</p>
+          {/* 시간대별 인사 + 날마다 바뀌는 응원 문구 (2026-11-26 사용자 요청). 브라우저 시각을 알기 전에는 기본 문구 */}
+          <h1 className="mt-3 text-[28px] font-bold leading-tight text-primary-dark md:text-[32px]">
+            {displayName ? `${displayName}님, ` : ""}{nowMinute !== null ? greetingFor(new Date(nowMinute * 60_000).getHours()) : "안녕하세요"}! <span aria-hidden="true">👋</span>
+          </h1>
+          <p className="mt-2 text-sm text-muted md:text-base">{today ? cheerOfDay(today) : "오늘도 WORKMATE와 함께 차근차근 시작해 봐요."}</p>
         </div>
         <div className="flex items-center gap-2">
           <span className="flex size-11 items-center justify-center rounded-xl border border-border bg-surface text-primary-dark" aria-label="알림 기능 준비 중" title="알림 기능 준비 중"><Bell size={20} strokeWidth={2} aria-hidden="true" /></span>
-          <span className="flex size-11 items-center justify-center rounded-xl border border-border bg-surface text-primary-dark" aria-label="프로필 기능 준비 중" title="프로필 기능 준비 중"><UserRound size={20} strokeWidth={2} aria-hidden="true" /></span>
+          <Link href="/settings" className="flex size-11 items-center justify-center rounded-xl border border-border bg-surface text-primary-dark hover:bg-pale-green" aria-label="프로필·설정" title="프로필·설정"><UserRound size={20} strokeWidth={2} aria-hidden="true" /></Link>
           <LogoutButton />
           <button type="button" onClick={() => setProjectFormOpen(true)} className="flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 font-semibold text-white hover:bg-primary-dark"><Plus size={20} strokeWidth={2} aria-hidden="true" /><span className="text-sm">새 프로젝트</span></button>
         </div>
@@ -72,7 +82,8 @@ export default function HomePage() {
         </div>
       ) : (
         <>
-          <section className="mt-9 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4 lg:gap-5" aria-label="요약 지표" aria-busy={loading}>
+          {data && today ? <Briefing data={data} today={today} /> : <div className="mt-6 h-36 animate-pulse rounded-[20px] bg-pale-green/40" aria-hidden="true" />}
+          <section className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4 lg:gap-5" aria-label="요약 지표" aria-busy={loading}>
             <SummaryCard title="전체 프로젝트" value={kpi ? pad(kpi.total_projects) : null} description="보관한 프로젝트 제외" icon={FolderKanban} />
             <SummaryCard title="전체 업무" value={kpi ? pad(kpi.total_tasks) : null} description="프로젝트 업무 + 개인 업무" icon={ListTodo} />
             <SummaryCard title="완료한 업무" value={kpi ? pad(kpi.completed_tasks) : null} description="완료 상태인 업무" icon={Check} />

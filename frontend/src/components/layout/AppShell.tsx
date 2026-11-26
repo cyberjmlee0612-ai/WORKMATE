@@ -23,7 +23,7 @@ const navigation: NavItem[] = [
   { label: "AI 업무 도우미", icon: Sparkles, ai: true, href: "/assistant" },
   { label: "캘린더", icon: CalendarDays, href: "/calendar" },
   { label: "리포트", icon: ChartNoAxesCombined, href: "/reports" },
-  { label: "설정", icon: Settings2 },
+  { label: "설정", icon: Settings2, href: "/settings" },
 ];
 
 function isActive(pathname: string, href?: string) {

@@ -21,6 +21,7 @@ import { ProjectFormDialog } from "@/components/projects/ProjectFormDialog";
 import { DeleteProjectDialog } from "@/components/projects/DeleteProjectDialog";
 import { EmptyState, ErrorState } from "@/components/common/QueryStates";
 import { ProjectTasksSection } from "@/components/tasks/ProjectTasksSection";
+import { ProjectEventsSection } from "@/components/events/ProjectEventsSection";
 
 export default function ProjectDetailPage({ params }: PageProps<"/projects/[id]">) {
   const { id } = use(params);
@@ -235,6 +236,7 @@ export default function ProjectDetailPage({ params }: PageProps<"/projects/[id]"
         onDrop={(item, point, element) => nest.drop(item, project.id, project.name, point, element)}
         onNotice={(message) => setFeedback({ message, error: false })}
       />
+      <ProjectEventsSection projectId={project.id} />
       <ProjectHistory projectId={project.id} />
 
       {editOpen && <ProjectFormDialog project={project} onClose={() => setEditOpen(false)} />}

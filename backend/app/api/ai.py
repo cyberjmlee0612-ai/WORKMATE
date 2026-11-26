@@ -133,19 +133,29 @@ def _provider_failed(exc: AiProviderError) -> HTTPException:
 
 # ---------------------------------------------------------------- 하루 계획 제안
 
-HHMM = r"^([01]\d|2[0-4]):[0-5]\d$"
+HHMM = r"^(([01]\d|2[0-3]):[0-5]\d|24:00)$"
 NOTE_MAX_LENGTH = 300
+MAX_RANGES = 20
+
+
+class TimeRange(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    start: str = Field(pattern=HHMM)
+    end: str = Field(pattern=HHMM)
+    label: str = Field("", max_length=40)
 
 
 class DayPlanRequest(BaseModel):
+    """windows: 업무를 넣을 일·공부 시간 구간, blocked: 피할 시간(수업·고정 일정·쉬는 시간).
+    화면이 설정의 요일별 반복 블록으로 채워 보내고, 사용자는 요청마다 고칠 수 있다."""
+
     model_config = ConfigDict(extra="forbid")
 
     date: date
     tz: str = Field("UTC", max_length=64)
-    work_start: str = Field("09:00", pattern=HHMM)
-    work_end: str = Field("18:00", pattern=HHMM)
-    lunch_start: str | None = Field("12:00", pattern=HHMM)  # 둘 다 null이면 쉬는 시간 없음
-    lunch_end: str | None = Field("13:00", pattern=HHMM)
+    windows: list[TimeRange] = Field(min_length=1, max_length=MAX_RANGES)
+    blocked: list[TimeRange] = Field(default_factory=list, max_length=MAX_RANGES)
     note: str | None = None
 
     @field_validator("note", mode="after")
@@ -179,27 +189,39 @@ def _minutes(value: str) -> int:
     return int(h) * 60 + int(m)
 
 
+def _merge(ranges: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    """겹치거나 맞닿은 구간을 합친다 (시작 순)."""
+    merged: list[tuple[int, int]] = []
+    for a, b in sorted(ranges):
+        if merged and a <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], b))
+        else:
+            merged.append((a, b))
+    return merged
+
+
 @router.post("/day-plan", response_model=DayPlanOut)
 def post_day_plan(body: DayPlanRequest, user: CurrentUserDep, db: UserDbDep) -> dict:
     """남은 업무로 그날 시간표 배치를 제안한다 (저장하지 않음). 승인한 것만 /time-plans/bulk로 저장."""
     today = _user_today(body.tz)
-    window = (_minutes(body.work_start), _minutes(body.work_end))
-    if window[1] - window[0] < 30:
-        raise FieldError("work_end", "일할 시간은 30분 이상이어야 해요.")
-    lunch: tuple[int, int] | None = None
-    if body.lunch_start and body.lunch_end:
-        lunch = (_minutes(body.lunch_start), _minutes(body.lunch_end))
-        if lunch[1] <= lunch[0]:
-            raise FieldError("lunch_end", "쉬는 시간 끝은 시작보다 늦어야 해요.")
+    ranges = [(_minutes(r.start), _minutes(r.end)) for r in body.windows]
+    if any(b <= a for a, b in ranges):
+        raise FieldError("windows", "일할 시간의 끝은 시작보다 늦어야 해요.")
+    windows = _merge(ranges)
+    if sum(b - a for a, b in windows) < 30:
+        raise FieldError("windows", "일할 시간은 모두 합쳐 30분 이상이어야 해요.")
+    blocked = [(_minutes(r.start), _minutes(r.end), r.label.strip() or "쉬는 시간") for r in body.blocked]
+    if any(b <= a for a, b, _ in blocked):
+        raise FieldError("blocked", "피할 시간의 끝은 시작보다 늦어야 해요.")
     if body.date == today:
         now = datetime.now(ZoneInfo(body.tz))
-        if now.hour * 60 + now.minute >= window[1] - 10:
-            raise FieldError("work_end", "오늘 남은 일할 시간이 없어요. 다른 날짜를 고르거나 끝 시각을 늦춰 주세요.")
+        if now.hour * 60 + now.minute >= windows[-1][1] - 10:
+            raise FieldError("windows", "오늘 남은 일할 시간이 없어요. 다른 날짜를 고르거나 시간을 늘려 주세요.")
 
     provider = _provider()
     used = _count_usage(db, user.id, today)
     try:
-        result = day_plan.suggest(db, user.id, provider, day=body.date, tz=body.tz, window=window, lunch=lunch, note=body.note)
+        result = day_plan.suggest(db, user.id, provider, day=body.date, tz=body.tz, windows=windows, blocked=blocked, note=body.note)
     except AiProviderError as exc:
         raise _provider_failed(exc) from exc
     if result.get("reason") == "no_tasks":

@@ -26,6 +26,7 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     def fake(db: Any, user_id: UUID, today: Any, tz: str) -> dict[str, Any]:
         return {
             "today": today, "projects": [], "today_tasks": [], "today_has_more": False,
+            "upcoming_events": [], "today_planned_minutes": 0, "today_schedule": [],
             "kpi": {"total_projects": 0, "active_projects": 0, "total_tasks": 0, "completed_tasks": 0, "progress": 0},
         }
 

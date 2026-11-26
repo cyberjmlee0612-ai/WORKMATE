@@ -1,6 +1,8 @@
 "use client";
 
 import type { Ref } from "react";
+import { eventKind, type WorkEvent } from "@/lib/api/events";
+import { toMinutes, type BlockKind, type ScheduleBlock } from "@/lib/api/schedule";
 import type { TimeEntry, TimePlan } from "@/lib/api/time";
 import { toLocalDateString } from "@/lib/date";
 import { formatMinutes } from "@/lib/format";
@@ -29,6 +31,18 @@ type Props = {
   onPlanPointerDown: (plan: TimePlan, kind: "move" | "resize", event: React.PointerEvent) => void;
   onPlanOpen: (plan: TimePlan) => void;
   onEntryOpen: (entry: TimeEntry) => void;
+  /** 요일별 반복 블록 (일·공부 / 수업·고정 / 쉬는 시간) — 배경으로 표시하고 누를 수 없다 */
+  blocks?: ScheduleBlock[];
+  /** 이벤트 날짜 — 날짜 머리글 아래에 표시 */
+  events?: WorkEvent[];
+  onEventOpen?: (event: WorkEvent) => void;
+};
+
+/** 반복 블록 배경 (계획·기록보다 아래, 클릭은 칸으로 통과) */
+const BAND_STYLE: Record<BlockKind, { band: string; text: string }> = {
+  work: { band: "bg-pale-green/45 border-l-[3px] border-primary/35", text: "text-primary/80" },
+  fixed: { band: "bg-[repeating-linear-gradient(135deg,rgba(14,165,233,0.10)_0_6px,rgba(14,165,233,0.04)_6px_12px)] border-l-[3px] border-sky-400/60", text: "text-sky-800/80" },
+  break: { band: "bg-[repeating-linear-gradient(135deg,rgba(245,158,11,0.12)_0_6px,rgba(245,158,11,0.04)_6px_12px)] border-l-[3px] border-amber-400/60", text: "text-amber-800/80" },
 };
 
 const WEEKDAY = ["일", "월", "화", "수", "목", "금", "토"];
@@ -46,6 +60,7 @@ function overlapMinutes(s: number, e: number, dayStart: number, dayEnd: number) 
 export function TimeGrid({
   days, plans, entries, nowMinute, ghost, previews = [], hiddenPlanId, placing, dragging,
   scrollRef, contentRef, onContentClick, onPlanPointerDown, onPlanOpen, onEntryOpen,
+  blocks = [], events = [], onEventOpen,
 }: Props) {
   const todayKey = nowMinute === null ? null : toLocalDateString(new Date(nowMinute * 60_000));
   const columns = { gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))` };
@@ -71,6 +86,20 @@ export function TimeGrid({
                   <p className="mt-1 truncate text-[11px] text-muted" title="계획 / 실제">
                     {formatMinutes(Math.floor(planned)) ?? "0분"} <span aria-hidden="true">/</span><span className="sr-only">계획, 실제</span> <span className="font-semibold text-primary-dark">{formatMinutes(Math.floor(actual)) ?? "0분"}</span>
                   </p>
+                  {events
+                    .filter((ev) => ev.event_date === toLocalDateString(day))
+                    .map((ev) => (
+                      <button
+                        key={ev.id}
+                        type="button"
+                        onClick={() => onEventOpen?.(ev)}
+                        title={`${eventKind(ev.kind).label}: ${ev.title}${ev.start_time ? ` (${ev.start_time}${ev.end_time ? `–${ev.end_time}` : ""})` : ""}${ev.project_path ? ` · ${ev.project_path}` : ""}`}
+                        className={`mt-1 block w-full truncate rounded-md border px-1.5 py-0.5 text-left text-[11px] font-semibold leading-4 hover:brightness-95 ${eventKind(ev.kind).badge}`}
+                      >
+                        {ev.start_time && <span className="font-normal">{ev.start_time} </span>}
+                        {ev.title}
+                      </button>
+                    ))}
                 </div>
               );
             })}
@@ -116,6 +145,22 @@ export function TimeGrid({
 
               return (
                 <div key={dayStart} className={`relative min-w-0 border-l border-border ${isToday ? "bg-pale-green/20" : ""}`}>
+                  {blocks
+                    .filter((b) => b.weekdays.includes(day.getDay()))
+                    .map((b) => {
+                      const top = toMinutes(b.start) * MINUTE_PX;
+                      const height = (toMinutes(b.end) - toMinutes(b.start)) * MINUTE_PX;
+                      return (
+                        <div
+                          key={b.id}
+                          aria-hidden="true"
+                          className={`pointer-events-none absolute inset-x-0 z-0 ${BAND_STYLE[b.kind].band}`}
+                          style={{ top, height }}
+                        >
+                          {height >= 16 && <span className={`absolute bottom-0.5 right-1 max-w-full truncate text-[10px] font-semibold ${BAND_STYLE[b.kind].text}`}>{b.title}</span>}
+                        </div>
+                      );
+                    })}
                   {planPos.map(({ item: plan, top, height, lane, lanes, cluster, cutTop, cutBottom }) => {
                     const width = (narrowClusters.has(cluster) ? PLAN_WIDTH : 100) / lanes;
                     const closed = plan.task_status === "completed" || plan.task_status === "cancelled";

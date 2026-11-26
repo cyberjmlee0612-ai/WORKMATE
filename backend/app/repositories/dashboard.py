@@ -1,6 +1,6 @@
 """대시보드 집계. 한 트랜잭션(요청) 안에서 모두 조회해 KPI·목록 수치가 서로 어긋나지 않게 한다."""
 
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -69,9 +69,34 @@ def list_today_tasks(db: Connection[DictRow], user_id: UUID, today: date, tz: st
     return rows[:TODAY_TASK_LIMIT], len(rows) > TODAY_TASK_LIMIT
 
 
+UPCOMING_EVENT_DAYS = 60
+UPCOMING_EVENT_LIMIT = 5
+
+
+def today_planned_minutes(db: Connection[DictRow], user_id: UUID, today: date, tz: str) -> int:
+    """오늘(사용자 시간대) 시간표에 계획한 시간(분). 경계에 걸친 계획은 오늘 안의 부분만."""
+    row = db.execute(
+        """
+        with d as (select (%(t)s::date::timestamp at time zone %(tz)s) as ds, ((%(t)s::date + 1)::timestamp at time zone %(tz)s) as de)
+        select coalesce(floor(sum(extract(epoch from least(p.ends_at, d.de) - greatest(p.starts_at, d.ds))) / 60), 0)::int as minutes
+        from public.task_time_plans p, d
+        where p.user_id = %(u)s and p.starts_at < d.de and p.ends_at > d.ds
+        """,
+        {"u": user_id, "t": today, "tz": tz},
+    ).fetchone()
+    return row["minutes"] if row else 0
+
+
 def get_dashboard(db: Connection[DictRow], user_id: UUID, today: date, tz: str) -> dict[str, Any]:
+    # 브리핑용 (2026-11-26 사용자 확정: 내 데이터로 만드는 오늘 브리핑 + 응원 문구)
+    from app.api.events import list_events
+    from app.api.schedule import blocks_for_weekday
+
     today_tasks, has_more = list_today_tasks(db, user_id, today, tz)
     return {
+        "upcoming_events": list_events(db, user_id, start=today, end=today + timedelta(days=UPCOMING_EVENT_DAYS), limit=UPCOMING_EVENT_LIMIT),
+        "today_planned_minutes": today_planned_minutes(db, user_id, today, tz),
+        "today_schedule": blocks_for_weekday(db, user_id, (today.weekday() + 1) % 7),  # Python 월=0 → 일=0 기준
         "today": today,
         "kpi": get_kpi(db, user_id),
         "projects": list_dashboard_projects(db, user_id),

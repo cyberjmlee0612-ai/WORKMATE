@@ -10,6 +10,7 @@ FastAPI는 DB에 직접 연결하지만, 요청마다 트랜잭션 안에서
 
 import json
 from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Annotated
 
 from fastapi import Depends
@@ -56,3 +57,13 @@ def get_user_db(user: CurrentUserDep) -> Iterator[Connection[DictRow]]:
 
 
 UserDbDep = Annotated[Connection[DictRow], Depends(get_user_db)]
+
+
+@contextmanager
+def owner_transaction() -> Iterator[Connection[DictRow]]:
+    """RLS 역할을 쓰지 않는 트랜잭션. auth 스키마를 다뤄야 하는 계정 삭제에만 쓴다.
+    호출하는 쪽이 반드시 토큰의 user_id로만 범위를 제한해야 한다."""
+    if _pool is None:
+        raise RuntimeError("DB pool is not open")
+    with _pool.connection() as conn, conn.transaction():
+        yield conn

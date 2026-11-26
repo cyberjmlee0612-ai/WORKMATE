@@ -3,7 +3,11 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, CircleAlert, Clock, ListTodo, MousePointerClick, Sparkles, X } from "lucide-react";
+import Link from "next/link";
+import { CalendarHeart, ChevronLeft, ChevronRight, CircleAlert, Clock, ListTodo, MousePointerClick, Sparkles, X } from "lucide-react";
+import { EventDialog } from "@/components/events/EventDialog";
+import { eventKeys, listEvents, type WorkEvent } from "@/lib/api/events";
+import { getScheduleBlocks, scheduleKeys } from "@/lib/api/schedule";
 import { DayPlanPanel } from "./DayPlanPanel";
 import { ApiError } from "@/lib/api/client";
 import { invalidateWorkData } from "@/lib/api/invalidate";
@@ -73,6 +77,11 @@ function CalendarBody({ view, anchor }: { view: View; anchor: Date }) {
 
   const plansQuery = useQuery({ queryKey: timeKeys.plans(range), queryFn: () => listTimePlans(range) });
   const entriesQuery = useQuery({ queryKey: timeKeys.entries(range), queryFn: () => listTimeEntries(range) });
+  // 요일별 반복 블록(배경)과 이벤트 날짜(머리글) — 2026-11-26 사용자 요청
+  const blocksQuery = useQuery({ queryKey: scheduleKeys.all, queryFn: getScheduleBlocks });
+  const eventFilters = { start: toLocalDateString(days[0]), end: toLocalDateString(days[days.length - 1]) };
+  const eventsQuery = useQuery({ queryKey: eventKeys.list(eventFilters), queryFn: () => listEvents(eventFilters) });
+  const [eventDialog, setEventDialog] = useState<{ mode: "create"; date: string } | { mode: "edit"; event: WorkEvent } | null>(null);
 
   const [selected, setSelected] = useState<Task | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -324,6 +333,14 @@ function CalendarBody({ view, anchor }: { view: View; anchor: Date }) {
           </button>
           <button
             type="button"
+            onClick={() => setEventDialog({ mode: "create", date: toLocalDateString(defaultPlanDay) })}
+            className="flex min-h-11 items-center gap-2 rounded-xl border border-border bg-surface px-3.5 text-sm font-semibold text-primary-dark hover:bg-pale-green"
+          >
+            <CalendarHeart size={18} strokeWidth={2} aria-hidden="true" />
+            이벤트
+          </button>
+          <button
+            type="button"
             onClick={() => {
               setPlanNotice(null);
               setDayPlanOpen(true);
@@ -346,6 +363,14 @@ function CalendarBody({ view, anchor }: { view: View; anchor: Date }) {
         <span className="inline-flex items-center gap-1.5"><span className="size-3 rounded border-2 border-dashed border-primary/70 bg-pale-green" aria-hidden="true" />계획</span>
         <span className="inline-flex items-center gap-1.5"><span className="size-3 rounded bg-primary" aria-hidden="true" />실제 기록</span>
         {previews.length > 0 && <span className="inline-flex items-center gap-1.5"><span className="size-3 rounded border-2 border-dashed border-violet-500 bg-violet-100" aria-hidden="true" />AI 제안(저장 전)</span>}
+        {(blocksQuery.data?.length ?? 0) > 0 && (
+          <>
+            <span className="inline-flex items-center gap-1.5"><span className="size-3 rounded-sm border-l-[3px] border-primary/35 bg-pale-green" aria-hidden="true" />일·공부 시간</span>
+            <span className="inline-flex items-center gap-1.5"><span className="size-3 rounded-sm border-l-[3px] border-sky-400/60 bg-sky-100" aria-hidden="true" />수업·고정</span>
+            <span className="inline-flex items-center gap-1.5"><span className="size-3 rounded-sm border-l-[3px] border-amber-400/60 bg-amber-100" aria-hidden="true" />쉬는 시간</span>
+          </>
+        )}
+        <Link href="/settings" className="font-semibold text-primary underline-offset-2 hover:underline">요일별 시간표 설정</Link>
         <span>날짜 아래 숫자: 계획 / 실제 합계</span>
       </p>
 
@@ -406,6 +431,9 @@ function CalendarBody({ view, anchor }: { view: View; anchor: Date }) {
             onPlanPointerDown={startPlanDrag}
             onPlanOpen={(plan) => !justDragged.current && setPlanDialog({ mode: "edit", plan })}
             onEntryOpen={(entry) => !justDragged.current && setEntryDialog(entry)}
+            blocks={blocksQuery.data ?? []}
+            events={eventsQuery.data ?? []}
+            onEventOpen={(event) => setEventDialog({ mode: "edit", event })}
           />
           </div>
           {/* 일간 보기: 오른쪽(좁은 화면은 아래)에 업무별 계획/실제·타이머·메모 */}
@@ -428,6 +456,8 @@ function CalendarBody({ view, anchor }: { view: View; anchor: Date }) {
         <PlanDialog mode="create" task={planDialog.task} start={planDialog.start} minutes={planDialog.minutes} onClose={() => setPlanDialog(null)} />
       )}
       {entryDialog && <EntryEditDialog entry={entryDialog} onClose={() => setEntryDialog(null)} />}
+      {eventDialog?.mode === "create" && <EventDialog mode="create" date={eventDialog.date} onClose={() => setEventDialog(null)} />}
+      {eventDialog?.mode === "edit" && <EventDialog mode="edit" event={eventDialog.event} onClose={() => setEventDialog(null)} />}
       {dayPlanOpen && (
         <DayPlanPanel
           initialDate={defaultPlanDay}

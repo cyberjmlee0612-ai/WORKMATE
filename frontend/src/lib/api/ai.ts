@@ -25,14 +25,16 @@ export const getAiUsage = (tz: string) => apiFetch<AiUsage>(`/ai/usage?${new URL
 export const requestBreakdown = (input: { text: string; project_id: string | null; tz: string }) =>
   apiFetch<BreakdownResult>("/ai/breakdown", { method: "POST", body: JSON.stringify(input) });
 
-/** AI 하루 계획 제안 (저장하지 않음). 시각은 "HH:MM", 쉬는 시간은 둘 다 null이면 없음 */
+/**
+ * AI 하루 계획 제안 (저장하지 않음). 시각은 "HH:MM".
+ * windows: 업무를 넣을 일·공부 시간, blocked: 피할 시간(수업·고정 일정·쉬는 시간)
+ */
+export type TimeRangeInput = { start: string; end: string; label?: string };
 export type DayPlanInput = {
   date: string; // YYYY-MM-DD
   tz: string;
-  work_start: string;
-  work_end: string;
-  lunch_start: string | null;
-  lunch_end: string | null;
+  windows: TimeRangeInput[];
+  blocked: TimeRangeInput[];
   note: string | null;
 };
 export type DayPlanBlock = { task_id: string; task_title: string; project_path: string | null; starts_at: string; ends_at: string; reason: string };

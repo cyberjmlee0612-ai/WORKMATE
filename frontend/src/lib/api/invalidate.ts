@@ -1,5 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { dashboardKeys } from "./dashboard";
+import { eventKeys } from "./events";
 import { projectKeys } from "./projects";
 import { reportKeys } from "./reports";
 import { taskKeys } from "./tasks";
@@ -17,5 +18,6 @@ export function invalidateWorkData(queryClient: QueryClient) {
     queryClient.invalidateQueries({ queryKey: projectKeys.all }),
     queryClient.invalidateQueries({ queryKey: dashboardKeys.all }),
     queryClient.invalidateQueries({ queryKey: reportKeys.all }),
+    queryClient.invalidateQueries({ queryKey: eventKeys.all }), // 프로젝트를 지우면 이벤트가 개인 이벤트로 바뀐다
   ]);
 }
