@@ -1,6 +1,7 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { dashboardKeys } from "./dashboard";
 import { projectKeys } from "./projects";
+import { reportKeys } from "./reports";
 import { taskKeys } from "./tasks";
 import { timeKeys } from "./time";
 
@@ -15,5 +16,6 @@ export function invalidateWorkData(queryClient: QueryClient) {
     queryClient.invalidateQueries({ queryKey: taskKeys.all }),
     queryClient.invalidateQueries({ queryKey: projectKeys.all }),
     queryClient.invalidateQueries({ queryKey: dashboardKeys.all }),
+    queryClient.invalidateQueries({ queryKey: reportKeys.all }),
   ]);
 }

@@ -3,6 +3,7 @@
 GET  /ai/usage?tz=        오늘 사용량과 AI 사용 가능 여부
 POST /ai/breakdown        자연어 → 세부 업무 제안 (저장하지 않음)
 POST /ai/day-plan         남은 업무로 그날 시간표 배치 제안 (저장하지 않음)
+POST /ai/report-review    리포트 기간 회고 (저장하지 않음)
 
 하루 사용량(사용자 시간대 기준)은 AI 호출 전에 1 늘린다. 호출이 실패하면 예외로 요청 트랜잭션이
 롤백되므로 실패한 요청은 세지 않는다. 같은 사용자의 요청은 사용량 행 잠금 때문에 차례로 처리된다.
@@ -18,12 +19,14 @@ from psycopg import Connection
 from psycopg.rows import DictRow
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.ai import breakdown, day_plan
+from app.ai import breakdown, day_plan, report_review
 from app.ai.provider import AiNotConfigured, AiProviderError, get_provider, is_configured
 from app.core.auth import CurrentUserDep
 from app.core.config import get_settings
 from app.core.errors import FieldError
 from app.db import UserDbDep
+from app.api.reports import validate_period
+from app.repositories import reports as report_repo
 from app.repositories.tasks import PROJECT_NOT_FOUND
 
 router = APIRouter(prefix="/ai", tags=["ai"])
@@ -203,6 +206,43 @@ def post_day_plan(body: DayPlanRequest, user: CurrentUserDep, db: UserDbDep) -> 
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "계획할 업무가 없어요. 먼저 업무를 추가해 주세요.")
     if not result["blocks"]:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, "빈 시간에 맞는 계획을 만들지 못했어요. 시간대를 넓히거나 다시 시도해 주세요.")
+    return {**result, "usage": _usage(used)}
+
+
+# ---------------------------------------------------------------- 리포트 회고
+
+
+class ReportReviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    start: date
+    end: date
+    tz: str = Field("UTC", max_length=64)
+
+
+class ReportReviewOut(BaseModel):
+    headline: str
+    good: list[str]
+    improve: list[str]
+    suggestions: list[str]
+    usage: UsageOut
+
+
+@router.post("/report-review", response_model=ReportReviewOut)
+def post_report_review(body: ReportReviewRequest, user: CurrentUserDep, db: UserDbDep) -> dict:
+    """리포트 기간의 숫자로 회고를 받는다 (저장하지 않음)."""
+    today = validate_period(body.start, body.end, body.tz)
+    report = report_repo.get_report(db, user.id, body.start, body.end, body.tz, today)
+    if not report_review.has_data(report):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "이 기간에는 분석할 기록이 없어요. 시간을 기록하거나 업무를 완료한 뒤 다시 시도해 주세요.")
+    provider = _provider()
+    used = _count_usage(db, user.id, today)
+    try:
+        result = report_review.review(provider, report)
+    except AiProviderError as exc:
+        raise _provider_failed(exc) from exc
+    if not result["headline"] and not result["good"] and not result["improve"]:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "AI가 회고를 만들지 못했어요. 잠시 후 다시 시도해 주세요.")
     return {**result, "usage": _usage(used)}
 
 
