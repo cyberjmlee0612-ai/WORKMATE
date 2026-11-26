@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { TimerBar } from "@/components/time/TimerBar";
+import { PlanAlerts } from "@/components/time/PlanAlerts";
 
 type NavItem = { label: string; icon: LucideIcon; href?: string; ai?: boolean };
 
@@ -78,6 +79,8 @@ export function AppShell({ children }: { children: ReactNode }) {
       <main className={`min-w-0 px-4 pb-32 pt-7 md:ml-20 md:px-6 md:pb-12 md:pt-9 lg:pt-10 lg:transition-[margin] lg:duration-200 xl:px-10 ${sidebarCollapsed ? "lg:ml-20" : "lg:ml-64"}`}>
         <div className="mx-auto max-w-7xl">
           <TimerBar />
+          {/* 계획 시작·끝 알림 (모든 화면) */}
+          <PlanAlerts />
           {children}
         </div>
       </main>

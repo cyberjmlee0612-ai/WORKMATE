@@ -3,7 +3,7 @@
 import { useId, useState, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CircleAlert, CircleCheck, Clock, KeyRound, LoaderCircle, LogOut, ShieldAlert, Sparkles, Trash2, UserRound } from "lucide-react";
+import { BellRing, CircleAlert, CircleCheck, Clock, KeyRound, LoaderCircle, LogOut, ShieldAlert, Sparkles, Trash2, UserRound } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { ErrorState } from "@/components/common/QueryStates";
 import { aiKeys, getAiUsage } from "@/lib/api/ai";
@@ -13,6 +13,7 @@ import { userTimeZone } from "@/lib/date";
 import { createClient } from "@/lib/supabase/client";
 import { DeleteAccountDialog } from "./DeleteAccountDialog";
 import { ScheduleEditor } from "./ScheduleEditor";
+import { AlertSettings } from "@/components/layout/AlertSettings";
 import { inputClass } from "./styles";
 
 const primaryButton = "flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60";
@@ -31,6 +32,9 @@ export function SettingsView() {
     <div className="mt-6 grid gap-5 lg:grid-cols-2">
       <ProfileSection settings={query.data} />
       <AiUsageSection />
+      <Section icon={BellRing} title="알림" description="계획한 시간에 맞춰 시작·마무리를 도와줘요.">
+        <AlertSettings />
+      </Section>
       <div className="lg:col-span-2">
         <Section icon={Clock} title="시간표 (요일별 반복)" description="일·공부 시간, 학교·학원 같은 수업·고정 일정, 쉬는 시간을 요일마다 정해요. 캘린더에 배경으로 보이고, AI 하루 계획은 일·공부 시간에만 업무를 넣어요.">
           <ScheduleEditor />

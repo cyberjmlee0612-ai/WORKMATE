@@ -5,10 +5,11 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import {
-  Bell, CalendarHeart, ChartNoAxesCombined, Check, FolderKanban,
+  CalendarHeart, ChartNoAxesCombined, Check, FolderKanban,
   Plus, Sun, UserRound, ListTodo, ArrowRight, TriangleAlert, CalendarClock,
 } from "lucide-react";
 import { EventDialog } from "@/components/events/EventDialog";
+import { NotificationBell } from "@/components/layout/NotificationBell";
 import { EventRow } from "@/components/events/ProjectEventsSection";
 import { eventKeys, listEvents, type WorkEvent } from "@/lib/api/events";
 import type { LucideIcon } from "lucide-react";
@@ -96,7 +97,7 @@ function Dashboard() {
           <p className="mt-2 text-sm text-muted md:text-base">{today ? cheerOfDay(today) : "오늘도 WORKMATE와 함께 차근차근 시작해 봐요."}</p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="flex size-11 items-center justify-center rounded-xl border border-border bg-surface text-primary-dark" aria-label="알림 기능 준비 중" title="알림 기능 준비 중"><Bell size={20} strokeWidth={2} aria-hidden="true" /></span>
+          <NotificationBell />
           <Link href="/settings" className="flex size-11 items-center justify-center rounded-xl border border-border bg-surface text-primary-dark hover:bg-pale-green" aria-label="프로필·설정" title="프로필·설정"><UserRound size={20} strokeWidth={2} aria-hidden="true" /></Link>
           <LogoutButton />
           <button type="button" onClick={() => setProjectFormOpen(true)} className="flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 font-semibold text-white hover:bg-primary-dark"><Plus size={20} strokeWidth={2} aria-hidden="true" /><span className="text-sm">새 프로젝트</span></button>
