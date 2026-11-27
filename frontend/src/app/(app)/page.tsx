@@ -29,6 +29,7 @@ import { Briefing } from "@/components/dashboard/Briefing";
 import { CheckinCard } from "@/components/dashboard/CheckinCard";
 import { MissedPlansCard } from "@/components/dashboard/MissedPlansCard";
 import { HabitsCard } from "@/components/routines/HabitsCard";
+import { OnboardingChecklist } from "@/components/onboarding/OnboardingChecklist";
 
 const headerDateFormatter = new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric" });
 
@@ -120,6 +121,9 @@ function Dashboard() {
           </button>
         ))}
       </div>
+
+      {/* 처음 사용자 안내: 새 사용자면 /welcome으로, 안내 화면을 나갔으면 남은 단계 체크리스트 */}
+      <OnboardingChecklist />
 
       {isError ? (
         <div className="mt-9">

@@ -3,7 +3,8 @@
 import { useId, useState, type FormEvent, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BellRing, CircleAlert, CircleCheck, Clock, KeyRound, LoaderCircle, LogOut, ShieldAlert, Sparkles, Trash2, UserRound } from "lucide-react";
+import { BellRing, CircleAlert, CircleCheck, Clock, KeyRound, LoaderCircle, LogOut, Rocket, ShieldAlert, Sparkles, Trash2, UserRound } from "lucide-react";
+import { onboardingKeys, setOnboarding } from "@/lib/api/onboarding";
 import type { LucideIcon } from "lucide-react";
 import { ErrorState } from "@/components/common/QueryStates";
 import { aiKeys, getAiUsage } from "@/lib/api/ai";
@@ -93,7 +94,30 @@ function ProfileSection({ settings }: { settings: UserSettings }) {
         </p>
         <SaveRow pending={save.isPending} disabled={!changed} done={done} error={save.isError && !fieldError ? save.error.message : null} />
       </form>
+      <RestartOnboarding />
     </Section>
+  );
+}
+
+/** 시작 안내 다시 보기 (2026-11-27 사용자 확정: 기존 계정은 자동으로 띄우지 않고 여기서만) */
+function RestartOnboarding() {
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const restart = useMutation({
+    mutationFn: () => setOnboarding("wizard"),
+    onSuccess: (data) => {
+      queryClient.setQueryData(onboardingKeys.all, data);
+      router.push("/welcome");
+    },
+  });
+  return (
+    <div className="mt-5 border-t border-border pt-4">
+      <button type="button" onClick={() => restart.mutate()} disabled={restart.isPending} className="flex min-h-11 items-center gap-2 rounded-xl border border-border bg-surface px-4 text-sm font-semibold text-primary-dark hover:bg-pale-green disabled:opacity-60">
+        <Rocket size={16} strokeWidth={2} aria-hidden="true" />
+        시작 안내 다시 보기
+      </button>
+      {restart.isError && <p className="mt-1 text-xs font-semibold text-red-700" role="alert">{restart.error.message}</p>}
+    </div>
   );
 }
 
