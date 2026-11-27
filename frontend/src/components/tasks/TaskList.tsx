@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { ListChecks, Ban, CircleAlert, Clock, FolderKanban, History, Info, Pencil, Trash2, UserRound } from "lucide-react";
+import { ListChecks, Ban, CircleAlert, Clock, FolderKanban, History, Info, Pencil, Repeat, Trash2, UserRound } from "lucide-react";
 import { MoveTasksBar } from "./MoveTasksBar";
 import { endDrag, startDrag } from "@/lib/dnd";
 import { TaskTimerButton } from "@/components/time/TaskTimerButton";
@@ -200,6 +200,12 @@ function TaskRow({ task, today, showProject, selection, draggable, dragTasks, on
         )}
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted">
           <TaskPriorityBadge priority={task.priority} />
+          {task.routine_id && (
+            <Link href="/routines" className="inline-flex items-center gap-1 rounded hover:text-primary-dark hover:underline" title="반복으로 만든 업무">
+              <Repeat size={14} strokeWidth={2} aria-hidden="true" />
+              반복
+            </Link>
+          )}
           {showProject &&
             (task.project_id ? (
               <Link href={`/projects/${task.project_id}`} className="inline-flex items-center gap-1 rounded hover:text-primary-dark hover:underline">

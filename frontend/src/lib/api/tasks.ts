@@ -50,6 +50,8 @@ export type Task = {
   tracked_minutes: number;
   /** 시간표에 배치한 계획 시간 합계(분) */
   planned_minutes: number;
+  /** 반복으로 만든 업무면 그 반복 ID */
+  routine_id?: string | null;
   created_at: string;
   updated_at: string;
 };

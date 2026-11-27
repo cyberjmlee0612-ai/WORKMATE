@@ -1,9 +1,10 @@
 "use client";
 
 import { Suspense, useState } from "react";
+import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { ListTodo, Plus } from "lucide-react";
+import { ListTodo, Plus, Repeat } from "lucide-react";
 import { listProjects, projectKeys } from "@/lib/api/projects";
 import { ancestorsOf, buildTree, descendantsOf } from "@/lib/projectTree";
 import {
@@ -84,10 +85,16 @@ function TasksContent() {
           <h1 className="mt-3 text-[28px] font-bold leading-tight text-primary-dark md:text-[32px]">업무 관리</h1>
           <p className="mt-2 text-sm text-muted md:text-base">프로젝트 업무와 개인 업무를 한곳에서 관리하세요.</p>
         </div>
-        <button type="button" onClick={() => setFormOpen(true)} className="flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 font-semibold text-white hover:bg-primary-dark">
-          <Plus size={20} strokeWidth={2} aria-hidden="true" />
-          <span className="text-sm">새 업무</span>
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/routines" className="flex min-h-11 items-center gap-2 rounded-xl border border-border bg-surface px-4 text-sm font-semibold text-primary-dark hover:bg-pale-green">
+            <Repeat size={18} strokeWidth={2} aria-hidden="true" />
+            반복 · 습관
+          </Link>
+          <button type="button" onClick={() => setFormOpen(true)} className="flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 font-semibold text-white hover:bg-primary-dark">
+            <Plus size={20} strokeWidth={2} aria-hidden="true" />
+            <span className="text-sm">새 업무</span>
+          </button>
+        </div>
       </header>
 
       <section className="surface-card mt-8 rounded-[20px] p-4 md:p-5 lg:p-6" aria-label="업무 목록">

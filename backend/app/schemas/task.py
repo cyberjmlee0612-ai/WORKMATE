@@ -208,5 +208,6 @@ class TaskOut(BaseModel):
     cancel_reason: str | None
     tracked_minutes: int = 0  # 실제 기록 시간 합계 (끝난 기록만)
     planned_minutes: int = 0  # 시간표에 배치한 계획 시간 합계
+    routine_id: UUID | None = None  # 반복으로 만든 업무
     created_at: datetime
     updated_at: datetime

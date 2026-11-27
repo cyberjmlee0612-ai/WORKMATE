@@ -15,7 +15,7 @@ LIST_LIMIT = 500  # 페이지 나누기를 도입하기 전 안전장치
 _SELECT = """
 select
   t.id, t.project_id, p.name as project_name, t.title, t.description, t.status, t.priority,
-  t.due_date, t.estimated_minutes, t.completed_at, t.cancelled_at, t.cancel_reason, t.created_at, t.updated_at,
+  t.due_date, t.estimated_minutes, t.completed_at, t.cancelled_at, t.cancel_reason, t.created_at, t.updated_at, t.routine_id,
   -- 실제 기록 시간 합계(끝난 기록만, 분 단위 내림). 진행 중인 타이머는 화면에서 따로 더한다.
   coalesce((
     select floor(sum(extract(epoch from e.ended_at - e.started_at)) / 60)::int

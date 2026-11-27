@@ -13,6 +13,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { TimerBar } from "@/components/time/TimerBar";
 import { PlanAlerts } from "@/components/time/PlanAlerts";
+import { RoutineMaterializer } from "@/components/routines/RoutineMaterializer";
 
 type NavItem = { label: string; icon: LucideIcon; href?: string; ai?: boolean };
 
@@ -81,6 +82,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <TimerBar />
           {/* 계획 시작·끝 알림 (모든 화면) */}
           <PlanAlerts />
+          <RoutineMaterializer />
           {children}
         </div>
       </main>

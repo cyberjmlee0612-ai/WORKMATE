@@ -28,6 +28,7 @@ import { cheerOfDay, greetingFor } from "@/lib/cheers";
 import { Briefing } from "@/components/dashboard/Briefing";
 import { CheckinCard } from "@/components/dashboard/CheckinCard";
 import { MissedPlansCard } from "@/components/dashboard/MissedPlansCard";
+import { HabitsCard } from "@/components/routines/HabitsCard";
 
 const headerDateFormatter = new Intl.DateTimeFormat("en-US", { weekday: "long", month: "long", day: "numeric" });
 
@@ -128,6 +129,7 @@ function Dashboard() {
         <>
           <MissedPlansCard />
           {today && <CheckinCard today={today} nowMinute={nowMinute} schedule={data?.today_schedule ?? []} />}
+          <HabitsCard />
           {data && today ? <Briefing data={data} today={today} /> : <div className="mt-6 h-36 animate-pulse rounded-[20px] bg-pale-green/40" aria-hidden="true" />}
           <section className="surface-card mt-6 rounded-[20px] p-4 md:p-5 lg:p-6" aria-labelledby="tasks-heading">
             <div className="flex flex-wrap items-end justify-between gap-3">
