@@ -4,7 +4,7 @@ import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ArrowRight, CalendarDays, CalendarHeart, ChartNoAxesCombined, CircleAlert, CornerDownLeft, FolderKanban, Home,
+  ArrowRight, Brain, CalendarDays, CalendarHeart, ChartNoAxesCombined, CircleAlert, CornerDownLeft, FolderKanban, Home,
   ListTodo, LoaderCircle, Repeat, Settings2, Sparkles, Square, Zap,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -18,6 +18,7 @@ import { routineKeys, ruleLabel } from "@/lib/api/routines";
 import { TASK_PRIORITIES, TASK_PRIORITY_LABEL, type TaskPriority } from "@/lib/api/tasks";
 import { userTimeZone } from "@/lib/date";
 import { formatDate } from "@/lib/format";
+import { openFocus } from "@/lib/focus";
 import { activeProjectOptions } from "@/lib/projectTree";
 
 /** 어디서든 Ctrl+K(맥은 ⌘K)로 여는 빠른 입력 · 검색 · 이동 창 (2026-11-27 사용자 확정) */
@@ -237,6 +238,17 @@ function Palette({ onClose }: { onClose: () => void }) {
               <ul className="mt-1">
                 {timer.running && (!needle || "타이머멈추기".includes(needle)) && (
                   <ResultRow icon={Square} title={`타이머 멈추기 — ${timer.running.task_title}`} sub="바로 하기" onClick={() => timer.stop()} />
+                )}
+                {(!needle || "집중모드뽀모도로".includes(needle)) && (
+                  <ResultRow
+                    icon={Brain}
+                    title={timer.running ? `집중 모드 — ${timer.running.task_title}` : "집중 모드 시작"}
+                    sub="바로 하기"
+                    onClick={() => {
+                      onClose();
+                      openFocus(timer.running ? { id: timer.running.task_id, title: timer.running.task_title } : undefined);
+                    }}
+                  />
                 )}
                 {pages.map((p) => <ResultRow key={p.href} icon={p.icon} title={p.label} sub="이동" onClick={() => go(p.href)} />)}
               </ul>

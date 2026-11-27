@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import ai, checkins, daily_notes, dashboard, estimates, events, health, me, projects, quick, reports, routines, schedule, tasks, time_entries, time_plans
+from app.api import ai, checkins, daily_notes, dashboard, estimates, events, focus, health, me, projects, quick, reports, routines, schedule, tasks, time_entries, time_plans
 from app.api import settings as settings_api
 from app.core.config import get_settings
 from app.core.errors import register_error_handlers
@@ -48,6 +48,7 @@ def create_app() -> FastAPI:
     app.include_router(estimates.router)
     app.include_router(routines.router)
     app.include_router(quick.router)
+    app.include_router(focus.router)
     app.include_router(ai.router)
     return app
 

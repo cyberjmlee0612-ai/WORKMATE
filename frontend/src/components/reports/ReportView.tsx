@@ -10,6 +10,7 @@ import { getReport, reportKeys, REPORT_MAX_DAYS } from "@/lib/api/reports";
 import { toLocalDateString, useToday, userTimeZone } from "@/lib/date";
 import { parseDateParam } from "@/lib/time";
 import { AiReviewCard } from "./AiReviewCard";
+import { FocusSummary } from "./FocusSummary";
 import { DailyChart } from "./ReportCharts";
 import { CalibrationSummary, Estimates, ProjectBreakdown, SummaryCards, TopTasks } from "./ReportSections";
 import { dayCount, periodKey, periodTitle, resolvePeriod, shiftAnchor, validateCustom, type Period, type PeriodMode } from "./period";
@@ -112,6 +113,9 @@ function ReportBody({ today }: { today: string }) {
               <Estimates report={report} />
             </Card>
           </div>
+          <Card title="집중 모드" description="집중한 횟수와 끝까지 해낸 비율, 무엇이 집중을 방해했는지 보여 줘요.">
+            <FocusSummary start={start} end={end} tz={tz} />
+          </Card>
           <AiReviewCard start={start} end={end} tz={tz} periodKey={periodKey(period)} hasData={hasData && !stale} />
         </div>
       )}

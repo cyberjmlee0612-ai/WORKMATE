@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { CircleAlert, Info, LoaderCircle, Square, Timer } from "lucide-react";
+import { Brain, CircleAlert, Info, LoaderCircle, Square, Timer } from "lucide-react";
+import { openFocus } from "@/lib/focus";
 import { LONG_RUNNING_MS, type TimeEntry } from "@/lib/api/time";
 import { formatElapsed, useNowSeconds } from "@/lib/time";
 import { useTimerControls } from "./useTimerControls";
@@ -62,6 +63,17 @@ function RunningBar({ entry, offset, pending, error, onStop }: BarProps) {
         </div>
         {/* 스크린리더가 1초마다 읽지 않도록 aria-live를 두지 않는다 */}
         <span className="font-geist text-lg font-bold tabular-nums text-primary-dark">{elapsed === null ? "--:--" : formatElapsed(elapsed)}</span>
+        {/* 이 업무로 집중 모드 (2026-11-27) */}
+        <button
+          type="button"
+          onClick={() => openFocus({ id: entry.task_id, title: entry.task_title })}
+          className="flex min-h-11 shrink-0 items-center gap-1.5 rounded-xl border border-primary/30 bg-surface px-3 text-sm font-semibold text-primary-dark hover:bg-pale-green"
+          title="이 업무로 집중 모드"
+        >
+          <Brain size={16} strokeWidth={2} aria-hidden="true" />
+          <span className="hidden sm:inline">집중</span>
+          <span className="sr-only sm:hidden">집중 모드</span>
+        </button>
         <button
           type="button"
           onClick={onStop}

@@ -15,6 +15,7 @@ import { TimerBar } from "@/components/time/TimerBar";
 import { PlanAlerts } from "@/components/time/PlanAlerts";
 import { RoutineMaterializer } from "@/components/routines/RoutineMaterializer";
 import { QuickPalette } from "@/components/quick/QuickPalette";
+import { FocusMode } from "@/components/focus/FocusMode";
 import { openQuick } from "@/lib/api/quick";
 
 type NavItem = { label: string; icon: LucideIcon; href?: string; ai?: boolean };
@@ -94,6 +95,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <PlanAlerts />
           <RoutineMaterializer />
           <QuickPalette />
+          <FocusMode />
           {/* 모바일: 오른쪽 위 빠른 입력 버튼 */}
           <button type="button" onClick={openQuick} className="glass-panel fixed right-3 top-[max(0.75rem,env(safe-area-inset-top))] z-30 flex size-11 items-center justify-center rounded-full text-primary md:hidden" aria-label="빠른 입력 · 검색">
             <Zap size={20} strokeWidth={2} aria-hidden="true" />
