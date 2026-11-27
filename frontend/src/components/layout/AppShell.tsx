@@ -8,12 +8,14 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   CalendarDays, ChartNoAxesCombined, ChevronLeft, ChevronRight, CircleHelp,
-  FolderKanban, Home, ListTodo, MoreHorizontal, Settings2, Sparkles,
+  FolderKanban, Home, ListTodo, MoreHorizontal, Settings2, Sparkles, Zap,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { TimerBar } from "@/components/time/TimerBar";
 import { PlanAlerts } from "@/components/time/PlanAlerts";
 import { RoutineMaterializer } from "@/components/routines/RoutineMaterializer";
+import { QuickPalette } from "@/components/quick/QuickPalette";
+import { openQuick } from "@/lib/api/quick";
 
 type NavItem = { label: string; icon: LucideIcon; href?: string; ai?: boolean };
 
@@ -52,7 +54,15 @@ export function AppShell({ children }: { children: ReactNode }) {
           </button>
         </div>
 
-        <nav className="mt-12 space-y-2" aria-label="주 메뉴">
+        {/* 빠른 입력 · 검색 (Ctrl+K) — 2026-11-27 사용자 확정 */}
+        <button type="button" onClick={openQuick} className="mt-8 flex min-h-11 items-center gap-3 rounded-xl border border-border bg-surface px-3.5 text-sm text-muted hover:border-primary/40 hover:text-primary-dark" title="빠른 입력 · 검색 (Ctrl+K)" aria-keyshortcuts="Control+K">
+          <Zap size={18} strokeWidth={2} className="shrink-0 text-primary" aria-hidden="true" />
+          <span className={`${sidebarCollapsed ? "lg:hidden" : ""} hidden flex-1 text-left lg:inline`}>빠른 입력</span>
+          <kbd className={`${sidebarCollapsed ? "lg:hidden" : ""} hidden rounded border border-border px-1 text-[10px] lg:inline`}>Ctrl K</kbd>
+          <span className="sr-only lg:hidden">빠른 입력</span>
+        </button>
+
+        <nav className="mt-6 space-y-2" aria-label="주 메뉴">
           {navigation.map(({ label, icon: Icon, ai, href }) => {
             const active = isActive(pathname, href);
             const className = `${active ? "bg-pale-green font-semibold text-primary-dark" : "text-muted"} ${ai ? "liquid-accent text-primary-dark" : ""} ${href && !active ? "hover:bg-pale-green/60 hover:text-primary-dark" : ""} flex min-h-12 items-center gap-3 rounded-xl px-3.5`;
@@ -83,6 +93,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           {/* 계획 시작·끝 알림 (모든 화면) */}
           <PlanAlerts />
           <RoutineMaterializer />
+          <QuickPalette />
+          {/* 모바일: 오른쪽 위 빠른 입력 버튼 */}
+          <button type="button" onClick={openQuick} className="glass-panel fixed right-3 top-[max(0.75rem,env(safe-area-inset-top))] z-30 flex size-11 items-center justify-center rounded-full text-primary md:hidden" aria-label="빠른 입력 · 검색">
+            <Zap size={20} strokeWidth={2} aria-hidden="true" />
+          </button>
           {children}
         </div>
       </main>
